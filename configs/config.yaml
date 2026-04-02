@@ -13,3 +13,12 @@ model:
   num_layers: 3          # This controls the "Stack"
   units: 512
   embedding_dim: 256
+
+training:
+  epochs: 20
+  batch_size: 64
+  learning_rate: 0.001
+  # PHASE 1: Set this to False
+  # PHASE 2: Set this to True
+  use_teacher_forcing: False 
+  checkpoint_path: "models/checkpoints/"
