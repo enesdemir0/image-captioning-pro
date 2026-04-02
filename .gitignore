@@ -6,7 +6,8 @@ venv/
 .env
 
 # Data and Models (Do NOT push these)
-data/annotations/
+image_captioning_pro.egg-info
+data
 *.npy
 *.h5
 *.pth

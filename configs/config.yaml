@@ -1,26 +1,12 @@
-# Dataset Configuration
 dataset:
-  name: "MS-COCO"
-  subset_size: 10000        # How many images to use (set to 0 for all)
-  vocab_size: 5000          # Top 5,000 most frequent words
-  max_caption_length: 25    # Max words per sentence
-  image_dir: "data/train2014/" 
+  name: "MS-COCO-2014"
+  url_annotations: "http://images.cocodataset.org/annotations/annotations_trainval2014.zip"
+  image_dir: "data/train2014"
   caption_file: "data/annotations/captions_train2014.json"
+  image_prefix: "COCO_train2014_" 
+  vocab_size: 5000
+  max_caption_length: 25
 
-# Model Selection
 model:
-  encoder_name: "InceptionV3" # Options: InceptionV3, VGG16, Xception
-  decoder_type: "LSTM"       # Options: LSTM, GRU
+  encoder_name: "InceptionV3"
   embedding_dim: 256
-  units: 512                 # Hidden units in RNN
-
-# Training Hyperparameters
-training:
-  batch_size: 64
-  epochs: 20
-  learning_rate: 0.001
-  teacher_forcing_ratio: 0.5
-
-# Tracking
-mlflow:
-  experiment_name: "Image_Captioning_Phase_1"

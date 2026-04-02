@@ -2,6 +2,7 @@ import os
 import requests
 import zipfile
 from tqdm import tqdm
+from src.utils.config_loader import load_config
 
 def download_file(url, destination):
     """Downloads a file with a progress bar."""
@@ -20,30 +21,34 @@ def download_file(url, destination):
             bar.update(size)
 
 def setup_data():
-    # 1. Create directory structure
-    base_dir = "data"
-    annotations_dir = os.path.join(base_dir, "annotations")
+    # 1. Load the config (The "Brain")
+    config = load_config()
+    
+    # 2. Get the URL and Paths from the config
+    url_ann = config['dataset']['url_annotations'] # NO LONGER HARDCODED
+    caption_file_path = config['dataset']['caption_file']
+    base_data_dir = "data" 
+
+    # Determine the directory where the json should live
+    annotations_dir = os.path.dirname(caption_file_path)
     os.makedirs(annotations_dir, exist_ok=True)
 
-    # 2. URLs for MS-COCO 2014
-    urls = {
-        "annotations": "http://images.cocodataset.org/annotations/annotations_trainval2014.zip",
-        # We will add images later if needed
-    }
-
-    # 3. Download and Extract Annotations
-    ann_zip = os.path.join(base_dir, "annotations.zip")
-    if not os.path.exists(os.path.join(annotations_dir, "captions_train2014.json")):
-        print("Downloading MS-COCO Annotations...")
-        download_file(urls["annotations"], ann_zip)
+    # 3. Download and Extract logic
+    ann_zip_path = os.path.join(base_data_dir, "annotations.zip")
+    
+    # Check if the caption file already exists
+    if not os.path.exists(caption_file_path):
+        print(f"Downloading from: {url_ann}")
+        download_file(url_ann, ann_zip_path)
         
-        print("Extracting Annotations...")
-        with zipfile.ZipFile(ann_zip, 'r') as zip_ref:
-            zip_ref.extractall(base_dir)
-        os.remove(ann_zip) # Clean up zip file
-        print("Annotations ready!")
+        print("Extracting files...")
+        with zipfile.ZipFile(ann_zip_path, 'r') as zip_ref:
+            zip_ref.extractall(base_data_dir)
+        
+        os.remove(ann_zip_path)
+        print("Done!")
     else:
-        print("Annotations already exist. Skipping.")
+        print("Data already exists at the path specified in config. Skipping.")
 
 if __name__ == "__main__":
     setup_data()
