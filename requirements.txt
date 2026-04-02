@@ -8,3 +8,4 @@ mlflow
 dagshub
 mealpy
 tqdm
+pytest
