@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Data and Models (Do NOT push these)
+data/
+*.npy
+*.h5
+*.pth
+*.pkl
+mlruns/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
