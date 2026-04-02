@@ -1,4 +1,10 @@
-tensorflow
+tensorflow==2.15.0
 PyYAML
 pandas
 matplotlib
+numpy
+pillow
+mlflow
+dagshub
+mealpy
+tqdm

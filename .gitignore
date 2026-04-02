@@ -6,6 +6,7 @@ venv/
 .env
 
 # Data and Models (Do NOT push these)
+data/annotations/
 *.npy
 *.h5
 *.pth
