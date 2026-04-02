@@ -1,0 +1,4 @@
+tensorflow
+PyYAML
+pandas
+matplotlib
