@@ -9,4 +9,7 @@ dataset:
 
 model:
   encoder_name: "InceptionV3"
+  decoder_type: "GRU"    # Options: LSTM, GRU
+  num_layers: 3          # This controls the "Stack"
+  units: 512
   embedding_dim: 256

@@ -2,6 +2,7 @@ import pytest
 import tensorflow as tf
 from src.utils.config_loader import load_config
 from src.models.encoder import CNN_Encoder
+from src.models.decoder import RNN_Decoder
 
 @pytest.fixture
 def config():
@@ -47,3 +48,26 @@ def test_encoder_invalid_name():
     }
     with pytest.raises(ValueError):
         CNN_Encoder(bad_config)
+
+
+def test_stacked_decoder_initialization(config):
+    """Verifies that a 3-layer decoder initializes 3 states (for GRU)."""
+    decoder = RNN_Decoder(config)
+    batch_size = 2
+    units = config['model']['units']
+    
+    # Fake encoder dense map (batch_size, units)
+    fake_dense_map = tf.random.uniform((batch_size, units))
+    
+    # Initialize state
+    states = decoder.init_decoder_state(fake_dense_map)
+    
+    # Assertions
+    if config['model']['decoder_type'] == "GRU":
+        # Should have 1 state per layer
+        assert len(states) == config['model']['num_layers']
+    else:
+        # Should have 2 states per layer (h and c)
+        assert len(states) == config['model']['num_layers'] * 2
+    
+    print(f"\n✅ Stacked {config['model']['decoder_type']} Initialized with {len(states)} states.")
