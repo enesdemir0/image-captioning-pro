@@ -34,41 +34,31 @@ class CaptionTrainer:
         loss = 0
         batch_size = img_tensor.shape[0]
         
-        # 1. Get features from encoder
-        features = self.encoder(img_tensor) # Now features are (batch, regions, 512)
-        
-        # 2. Reduce to a single vector to initialize the RNN (The Dense Map)
-        # mean_features shape: (batch, 512)
-        mean_features = tf.reduce_mean(features, axis=1)
-        
-        # 3. Initialize hidden state
-        hidden = self.decoder.init_decoder_state(mean_features)
-
-        # The first input is always the <start> token
-        dec_input = tf.expand_dims(
-            [self.text_processor.tokenizer.word_index['<start>']] * batch_size, 1
-        )
-
+        # WE MOVE EVERYTHING INSIDE THE TAPE NOW:
         with tf.GradientTape() as tape:
-            # Loop through the sentence (except the last word)
+            # 1. Extract features INSIDE the tape
+            features = self.encoder(img_tensor)
+            
+            # 2. Initialize hidden state
+            mean_features = tf.reduce_mean(features, axis=1)
+            hidden = self.decoder.init_decoder_state(mean_features)
+
+            dec_input = tf.expand_dims(
+                [self.text_processor.tokenizer.word_index['<start>']] * batch_size, 1
+            )
+
+            # 3. Predict the sentence
             for i in range(1, target.shape[1]):
-                # 1. Predict the next word
                 predictions, hidden = self.decoder(dec_input, hidden)
-                
-                # 2. Calculate loss against the actual word
                 loss += self.loss_function(target[:, i], predictions)
 
-                # --- PHASE 1 LOGIC (Greedy/Autoregressive) ---
                 if not self.config['training'].get('use_teacher_forcing', False):
-                    # Use the model's own prediction as the next input
                     predicted_id = tf.argmax(predictions, axis=1)
                     dec_input = tf.expand_dims(predicted_id, 1)
-                
-                # --- PHASE 2 LOGIC (Teacher Forcing) ---
                 else:
-                    # Use the 'Ground Truth' word as the next input
                     dec_input = tf.expand_dims(target[:, i], 1)
 
+        # 4. Apply gradients to BOTH models
         total_loss = (loss / int(target.shape[1]))
         trainable_variables = self.encoder.trainable_variables + self.decoder.trainable_variables
         gradients = tape.gradient(loss, trainable_variables)

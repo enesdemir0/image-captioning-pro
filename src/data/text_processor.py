@@ -11,12 +11,14 @@ class TextProcessor:
         self.max_length = config['dataset']['max_caption_length']
         
         # Initialize the Keras Tokenizer
+        # In src/data/text_processor.py
         self.tokenizer = tf.keras.preprocessing.text.Tokenizer(
             num_words=self.vocab_size,
-            filters='!"#$%&()*+.,-/:;=?@[\]^_`{|}~ ',
+            filters=r'!"#$%&()*+.,-/:;=?@[\]^_`{|}~ ', # Added 'r' here
             lower=True,
             oov_token="<unk>"
         )
+        
 
     def clean_caption(self, caption):
         """Standardizes the text: lowercase, removes punctuation, adds tokens."""

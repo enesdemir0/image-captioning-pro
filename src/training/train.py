@@ -2,6 +2,7 @@ import os
 import tensorflow as tf
 import mlflow
 import dagshub
+from src.models import encoder
 from src.utils.config_loader import load_config
 from src.data.dataset_loader import DataLoader
 from src.models.encoder import CNN_Encoder
@@ -72,8 +73,9 @@ def main():
             if (epoch + 1) % 5 == 0:
                 ckpt_dir = config['training']['checkpoint_path']
                 os.makedirs(ckpt_dir, exist_ok=True)
-                encoder.save_weights(os.path.join(ckpt_dir, f"encoder_epoch_{epoch+1}.h5"))
-                decoder.save_weights(os.path.join(ckpt_dir, f"decoder_epoch_{epoch+1}.h5"))
+                # Change .h5 to .weights.h5
+                encoder.save_weights(os.path.join(ckpt_dir, f"encoder_epoch_{epoch+1}.weights.h5"))
+                decoder.save_weights(os.path.join(ckpt_dir, f"decoder_epoch_{epoch+1}.weights.h5"))
                 print(f"Saved checkpoint for epoch {epoch+1}")
 
         print("Training Complete!")
