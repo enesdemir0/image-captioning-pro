@@ -3,22 +3,27 @@ dataset:
   url_annotations: "http://images.cocodataset.org/annotations/annotations_trainval2014.zip"
   image_dir: "data/train2014"
   caption_file: "data/annotations/captions_train2014.json"
-  image_prefix: "COCO_train2014_" 
+  image_prefix: "COCO_train2014_"
   vocab_size: 5000
   max_caption_length: 25
+  subset_size: 1000  # Start small to test the pipeline!
 
 model:
   encoder_name: "InceptionV3"
-  decoder_type: "GRU"    # Options: LSTM, GRU
-  num_layers: 3          # This controls the "Stack"
+  decoder_type: "GRU"
+  num_layers: 3
   units: 512
   embedding_dim: 256
 
 training:
-  epochs: 20
+  epochs: 10
   batch_size: 64
   learning_rate: 0.001
-  # PHASE 1: Set this to False
-  # PHASE 2: Set this to True
-  use_teacher_forcing: False 
+  use_teacher_forcing: False # PHASE 1 logic
   checkpoint_path: "models/checkpoints/"
+
+mlflow:
+  experiment_name: "Phase_1_Baselines"
+  tracking_uri: "https://dagshub.com/enesdemir0/image-captioning-pro.mlflow"
+  repo_owner: "enesdemir0"
+  repo_name: "image-captioning-pro"
