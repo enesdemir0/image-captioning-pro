@@ -1,22 +1,35 @@
+import nltk
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from nltk.translate.meteor_score import meteor_score
 from rouge_score import rouge_scorer
 
-def calculate_metrics(real_caption, predicted_caption):
-    """
-    Calculates BLEU-4 and ROUGE-L for a single pair of captions.
-    """
-    # Clean the captions (remove <start> and <end>)
-    real = real_caption.replace('<start>', '').replace('<end>', '').strip().split()
-    pred = predicted_caption.replace('<start>', '').replace('<end>', '').strip().split()
+# Ensure NLTK resources are available
+try:
+    nltk.data.find('corpora/wordnet')
+    nltk.data.find('corpora/omw-1.4')
+except LookupError:
+    nltk.download('wordnet')
+    nltk.download('omw-1.4')
+    nltk.download('punkt')
 
-    # 1. BLEU Score (with smoothing to avoid 0.0 for short sentences)
+def calculate_all_metrics(real_caption, predicted_caption):
+    """
+    Calculates BLEU-4, METEOR, and ROUGE-L.
+    """
+    real_words = real_caption.replace('<start>', '').replace('<end>', '').strip().split()
+    pred_words = predicted_caption.replace('<start>', '').replace('<end>', '').strip().split()
+
+    # 1. BLEU-4
     smooth = SmoothingFunction().method1
-    # We use [real] because BLEU expects a list of references
-    bleu4 = sentence_bleu([real], pred, weights=(0.25, 0.25, 0.25, 0.25), smoothing_function=smooth)
+    bleu4 = sentence_bleu([real_words], pred_words, weights=(0.25, 0.25, 0.25, 0.25), smoothing_function=smooth)
 
     # 2. ROUGE-L
     scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
-    scores = scorer.score(' '.join(real), ' '.join(pred))
+    scores = scorer.score(' '.join(real_words), ' '.join(pred_words))
     rouge_l = scores['rougeL'].fmeasure
 
-    return bleu4, rouge_l
+    # 3. METEOR
+    # NLTK expects the reference to be a list of lists of words
+    meteor = meteor_score([real_words], pred_words)
+
+    return bleu4, meteor, rouge_l
