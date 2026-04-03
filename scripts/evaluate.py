@@ -3,7 +3,6 @@ import tensorflow as tf
 import numpy as np
 import mlflow
 import dagshub
-import matplotlib.pyplot as plt
 from src.utils.config_loader import load_config
 from src.data.dataset_loader import DataLoader
 from src.models.encoder import CNN_Encoder
@@ -13,8 +12,7 @@ from src.utils.metrics import calculate_all_metrics
 def generate_caption(image_tensor, encoder, decoder, text_processor, config):
     features = encoder(image_tensor)
     hidden = decoder.init_decoder_state(tf.reduce_mean(features, axis=1))
-    start_token = text_processor.tokenizer.word_index['<start>']
-    dec_input = tf.expand_dims([start_token], 0)
+    dec_input = tf.expand_dims([text_processor.tokenizer.word_index['<start>']], 0)
     
     result = []
     for i in range(config['dataset']['max_caption_length']):
@@ -28,56 +26,45 @@ def generate_caption(image_tensor, encoder, decoder, text_processor, config):
 
 def main():
     config = load_config()
-    dagshub.init(
-    repo_owner=config['mlflow']['repo_owner'], 
-    repo_name=config['mlflow']['repo_name'], 
-    mlflow=True
-    )
-    mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
+    model_id = f"{config['model']['encoder_name']}_{config['model']['decoder_type']}_L{config['model']['num_layers']}"
     
+    dagshub.init(repo_owner=config['mlflow']['repo_owner'], repo_name=config['mlflow']['repo_name'], mlflow=True)
+    mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
+
     loader = DataLoader(config)
     img_paths, captions = loader.load_annotations()
     _, _, (test_imgs, test_caps) = loader.split_data(img_paths, captions)
 
-    # Initialize and Build Models
+    # Initialize and Load
     encoder, decoder = CNN_Encoder(config), RNN_Decoder(config)
     encoder(tf.zeros((1, 299, 299, 3)))
     decoder.init_decoder_state(tf.zeros((1, config['model']['units'])))
     
-    # Load Weights
-    encoder.load_weights("models/checkpoints/encoder_e10.weights.h5")
-    decoder.load_weights("models/checkpoints/decoder_e10.weights.h5")
+    ckpt_path = os.path.join(config['training']['checkpoint_path'], f"{model_id}_encoder.weights.h5")
+    if not os.path.exists(ckpt_path):
+        print(f"❌ Error: Weights not found for {model_id} at {ckpt_path}")
+        return
+
+    encoder.load_weights(ckpt_path)
+    decoder.load_weights(os.path.join(config['training']['checkpoint_path'], f"{model_id}_decoder.weights.h5"))
 
     bleus, meteors, rouges = [], [], []
 
-    with mlflow.start_run(run_name=f"FINAL_REPORT_{config['model']['decoder_type']}"):
-        print("\nEvaluating on Test Set...")
-        os.makedirs("results/samples", exist_ok=True)
-
-        for i in range(50): # Evaluate 50 samples
+    with mlflow.start_run(run_name=f"EVAL_{model_id}"):
+        print(f"\n--- Evaluating Test Set for {model_id} ---")
+        # Run on first 100 images of the Test Set
+        for i in range(100):
             img, _ = loader.image_processor.preprocess_image(test_imgs[i])
             pred = generate_caption(tf.expand_dims(img, 0), encoder, decoder, loader.text_processor, config)
             
             b, m, r = calculate_all_metrics(test_caps[i], pred)
             bleus.append(b); meteors.append(m); rouges.append(r)
 
-            # SAVE FIGURES FOR THE REPORT (Like Figure 5/6)
-            if i < 10: # Save first 10 as examples
-                plt.figure(figsize=(8,8))
-                plt.imshow(img.numpy() * 0.5 + 0.5) # De-normalize for viewing
-                plt.title(f"Real: {test_caps[i]}\nPred: {pred}\nBLEU: {b:.2f}")
-                plt.axis('off')
-                filename = f"results/samples/sample_{i}.png"
-                plt.savefig(filename)
-                plt.close()
-                mlflow.log_artifact(filename) # Log to DagsHub
+        avg_b, avg_m, avg_r = np.mean(bleus), np.mean(meteors), np.mean(rouges)
+        mlflow.log_metrics({"test_bleu4": avg_b, "test_meteor": avg_m, "test_rougeL": avg_r})
 
-        # Log Metrics
-        mlflow.log_metric("test_bleu4", np.mean(bleus))
-        mlflow.log_metric("test_meteor", np.mean(meteors))
-        mlflow.log_metric("test_rougeL", np.mean(rouges))
-
-        print(f"\nFinal Averages -> BLEU-4: {np.mean(bleus):.4f} | METEOR: {np.mean(meteors):.4f} | ROUGE-L: {np.mean(rouges):.4f}")
+        print(f"\n| Architecture | BLEU-4 | METEOR | ROUGE-L |")
+        print(f"| {model_id} | {avg_b:.4f} | {avg_m:.4f} | {avg_r:.4f} |")
 
 if __name__ == "__main__":
     main()

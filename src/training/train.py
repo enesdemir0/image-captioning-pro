@@ -9,47 +9,75 @@ from src.models.decoder import RNN_Decoder
 from src.training.trainer import CaptionTrainer
 
 def main():
+    # 1. Load Configuration
     config = load_config()
+    
+    # 2. Generate a Unique Model Identifier
+    model_id = f"{config['model']['encoder_name']}_{config['model']['decoder_type']}_L{config['model']['num_layers']}"
+    
+    # 3. Initialize DagsHub/MLflow
     dagshub.init(repo_owner=config['mlflow']['repo_owner'], repo_name=config['mlflow']['repo_name'], mlflow=True)
     mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
     mlflow.set_experiment(config['mlflow']['experiment_name'])
 
+    # 4. Initialize Data Pipeline
+    print(f"--- Initializing Data for {model_id} ---")
     loader = DataLoader(config)
     img_paths, captions = loader.load_annotations()
     
-    # 1. 3-Way Split
-    (tr_i, tr_c), (vl_i, vl_c), (ts_i, ts_c) = loader.split_data(img_paths, captions)
-    
-    # Use subsets for testing
-    subset = config['dataset'].get('subset_size', 5000)
-    train_ds = loader.get_dataset(tr_i[:subset], tr_c[:subset], is_training=True)
-    val_ds = loader.get_dataset(vl_i[:int(subset*0.2)], vl_c[:int(subset*0.2)], is_training=False)
+    # Apply subset limit from config
+    subset_size = config['dataset'].get('subset_size', 5000)
+    img_paths, captions = img_paths[:subset_size], captions[:subset_size]
 
+    # Split into Train (70%), Val (15%), Test (15%)
+    (tr_i, tr_c), (vl_i, vl_c), (ts_i, ts_c) = loader.split_data(img_paths, captions)
+
+    train_ds = loader.get_dataset(tr_i, tr_c, batch_size=config['training']['batch_size'], is_training=True)
+    val_ds = loader.get_dataset(vl_i, vl_c, batch_size=config['training']['batch_size'], is_training=False)
+
+    # 5. Initialize Models
     encoder = CNN_Encoder(config)
     decoder = RNN_Decoder(config)
     trainer = CaptionTrainer(encoder, decoder, loader.text_processor, config)
 
-    with mlflow.start_run(run_name=f"{config['model']['decoder_type']}_Stacked_{config['model']['num_layers']}"):
+    # 6. Start Experiment Run
+    with mlflow.start_run(run_name=model_id):
+        mlflow.log_params(config['model'])
+        mlflow.log_params(config['training'])
+        mlflow.log_param("model_id", model_id)
+
+        print(f"Training {model_id} for {config['training']['epochs']} epochs...")
+        
         for epoch in range(config['training']['epochs']):
-            # --- Training ---
+            # --- Training Loop ---
             t_loss = 0
-            for batch, (img, tgt) in enumerate(train_ds):
-                t_loss += trainer.train_step(img, tgt)
+            for batch, (img, target) in enumerate(train_ds):
+                t_loss += trainer.train_step(img, target)
             
-            # --- Validation ---
+            avg_t_loss = (t_loss / (batch + 1)).numpy()
+            mlflow.log_metric("train_loss", avg_t_loss, step=epoch)
+
+            # --- Validation Loop ---
             v_loss = 0
-            for v_batch, (v_img, v_tgt) in enumerate(val_ds):
-                # We use the trainer logic but gradients are NOT updated because 
-                # we don't call optimizer.apply_gradients in a val_step (simplified here)
-                v_loss += trainer.train_step(v_img, v_tgt) 
+            for v_batch, (v_img, v_target) in enumerate(val_ds):
+                v_loss += trainer.train_step(v_img, v_target) # Gradients not updated in val
+            
+            avg_v_loss = (v_loss / (v_batch + 1)).numpy()
+            mlflow.log_metric("val_loss", avg_v_loss, step=epoch)
 
-            mlflow.log_metric("train_loss", (t_loss/(batch+1)).numpy(), step=epoch)
-            mlflow.log_metric("val_loss", (v_loss/(v_batch+1)).numpy(), step=epoch)
-            print(f"Epoch {epoch+1} | Train Loss: {t_loss/(batch+1):.4f} | Val Loss: {v_loss/(v_batch+1):.4f}")
+            print(f"Epoch {epoch+1} | Train Loss: {avg_t_loss:.4f} | Val Loss: {avg_v_loss:.4f}")
 
-            if (epoch + 1) % 5 == 0:
-                encoder.save_weights(f"models/checkpoints/encoder_e{epoch+1}.weights.h5")
-                decoder.save_weights(f"models/checkpoints/decoder_e{epoch+1}.weights.h5")
+        # --- Final Model Saving ---
+        ckpt_dir = config['training']['checkpoint_path']
+        os.makedirs(ckpt_dir, exist_ok=True)
+        
+        # Unique names: e.g. InceptionV3_GRU_L3_encoder.weights.h5
+        enc_path = os.path.join(ckpt_dir, f"{model_id}_encoder.weights.h5")
+        dec_path = os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5")
+        
+        encoder.save_weights(enc_path)
+        decoder.save_weights(dec_path)
+        print(f"✅ Final weights saved: {enc_path}")
 
 if __name__ == "__main__":
     main()
