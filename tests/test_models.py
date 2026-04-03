@@ -9,7 +9,7 @@ def test_encoder_architecture(config):
     sample_img = tf.random.uniform((1, 299, 299, 3))
     output = encoder(sample_img)
     assert len(output.shape) == 3
-    assert output.shape[-1] == config['model']['embedding_dim']
+    assert output.shape[-1] == config['model']['units']
 
 def test_decoder_architecture(config):
     decoder = RNN_Decoder(config)

@@ -9,3 +9,6 @@ dagshub
 mealpy
 tqdm
 pytest
+nltk
+rouge-score
+scikit-learn
