@@ -20,7 +20,7 @@ training:
   batch_size: 64
   learning_rate: 0.0005
   use_teacher_forcing: False 
-  checkpoint_path: "models/checkpoints/"
+  checkpoint_path: "/content/drive/MyDrive/Image_Captioning_Models/checkpoints/"
 
 mlflow:
   tracking_uri: "https://dagshub.com/enesdemir0/image-captioning-pro.mlflow"

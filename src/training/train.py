@@ -9,45 +9,47 @@ from src.models.decoder import RNN_Decoder
 from src.training.trainer import CaptionTrainer
 
 def main():
-    # 1. Load Configuration
     config = load_config()
-    
-    # 2. GENERATE AUTOMATIC NAME (Matches what you want)
     enc_name = config['model']['encoder_name']
     dec_type = config['model']['decoder_type']
     layers = config['model']['num_layers']
     model_id = f"Encoder_{enc_name}_Decoder_{dec_type}_L{layers}"
     
-    # 3. Initialize DagsHub/MLflow
     dagshub.init(repo_owner=config['mlflow']['repo_owner'], repo_name=config['mlflow']['repo_name'], mlflow=True)
     mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
-    
-    # --- THIS MATCHES THE EXPERIMENT NAME TO YOUR MODEL ID ---
     mlflow.set_experiment(model_id)
 
-    # 4. Initialize Data Pipeline
     loader = DataLoader(config)
     img_paths, captions = loader.load_annotations()
-    
-    subset_size = config['dataset'].get('subset_size', 0)
-    if subset_size > 0:
-        img_paths, captions = img_paths[:subset_size], captions[:subset_size]
+    subset_size = config['dataset'].get('subset_size', 50000)
+    img_paths, captions = img_paths[:subset_size], captions[:subset_size]
 
     (tr_i, tr_c), (vl_i, vl_c), (ts_i, ts_c) = loader.split_data(img_paths, captions)
     train_ds = loader.get_dataset(tr_i, tr_c, batch_size=config['training']['batch_size'], is_training=True)
     val_ds = loader.get_dataset(vl_i, vl_c, batch_size=config['training']['batch_size'], is_training=False)
 
-    # 5. Initialize Models
     encoder = CNN_Encoder(config)
     decoder = RNN_Decoder(config)
     trainer = CaptionTrainer(encoder, decoder, loader.text_processor, config)
 
-    # 6. Start Experiment Run (Named "Training")
+    # Building models to allow weight loading/saving
+    encoder(tf.zeros((1, 299, 299, 3)))
+    decoder(tf.zeros((1, 1)), decoder.init_decoder_state(tf.zeros((1, config['model']['units']))))
+
+    # --- RESUME LOGIC (Checks Drive folder) ---
+    ckpt_dir = config['training']['checkpoint_path']
+    if not os.path.exists(ckpt_dir): os.makedirs(ckpt_dir, exist_ok=True)
+    
+    enc_path = os.path.join(ckpt_dir, f"{model_id}_encoder.weights.h5")
+    dec_path = os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5")
+
+    if os.path.exists(enc_path):
+        print(f"🔄 Resuming {model_id} from existing Drive checkpoint...")
+        encoder.load_weights(enc_path)
+        decoder.load_weights(dec_path)
+
     with mlflow.start_run(run_name="Training_Phase"):
         mlflow.log_params(config['model'])
-        mlflow.log_params(config['training'])
-
-        print(f"Starting Training for Experiment: {model_id}")
         
         for epoch in range(config['training']['epochs']):
             t_loss = 0
@@ -58,19 +60,21 @@ def main():
             for v_batch, (v_img, v_target) in enumerate(val_ds):
                 v_loss += trainer.train_step(v_img, v_target)
             
-            avg_t = (t_loss / (batch + 1)).numpy()
-            avg_v = (v_loss / (v_batch + 1)).numpy()
-            
+            avg_t, avg_v = (t_loss/(batch+1)).numpy(), (v_loss/(v_batch+1)).numpy()
             mlflow.log_metric("train_loss", avg_t, step=epoch)
             mlflow.log_metric("val_loss", avg_v, step=epoch)
-            print(f"Epoch {epoch+1} | Train Loss: {avg_t:.4f} | Val Loss: {avg_v:.4f}")
+            print(f"Epoch {epoch+1} | Train: {avg_t:.4f} | Val: {avg_v:.4f}")
+
+            # --- SAVE EVERY 5 EPOCHS DIRECTLY TO DRIVE ---
+            if (epoch + 1) % 5 == 0:
+                encoder.save_weights(enc_path)
+                decoder.save_weights(dec_path)
+                print(f"💾 Checkpoint saved to Drive at Epoch {epoch+1}")
 
         # Final Save
-        ckpt_dir = config['training']['checkpoint_path']
-        os.makedirs(ckpt_dir, exist_ok=True)
-        encoder.save_weights(os.path.join(ckpt_dir, f"{model_id}_encoder.weights.h5"))
-        decoder.save_weights(os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5"))
-        print(f"✅ Weights saved for {model_id}")
+        encoder.save_weights(enc_path)
+        decoder.save_weights(dec_path)
+        print("✅ Training Finished. Final weights on Drive.")
 
 if __name__ == "__main__":
     main()

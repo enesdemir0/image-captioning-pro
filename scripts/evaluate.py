@@ -29,7 +29,7 @@ def generate_caption(image_tensor, encoder, decoder, text_processor, config):
 def main():
     config = load_config()
     
-    # MATCH THE AUTOMATIC NAME
+    # Unified Naming Convention
     enc_name = config['model']['encoder_name']
     dec_type = config['model']['decoder_type']
     layers = config['model']['num_layers']
@@ -37,8 +37,6 @@ def main():
     
     dagshub.init(repo_owner=config['mlflow']['repo_owner'], repo_name=config['mlflow']['repo_name'], mlflow=True)
     mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
-    
-    # MATCH THE EXPERIMENT
     mlflow.set_experiment(model_id)
 
     loader = DataLoader(config)
@@ -48,36 +46,41 @@ def main():
     if subset_size > 0:
         img_paths, captions = img_paths[:subset_size], captions[:subset_size]
 
-    (tr_imgs, tr_caps), _, (test_imgs, test_caps) = loader.split_data(img_paths, captions)
-    loader.text_processor.fit_on_texts(tr_caps)
+    (train_imgs, train_caps), _, (test_imgs, test_caps) = loader.split_data(img_paths, captions)
+    loader.text_processor.fit_on_texts(train_caps)
 
+    # Initialize and Force Build
     encoder, decoder = CNN_Encoder(config), RNN_Decoder(config)
     encoder(tf.zeros((1, 299, 299, 3)))
     decoder(tf.zeros((1, 1)), decoder.init_decoder_state(tf.zeros((1, config['model']['units']))))
 
+    # Load Weights
     ckpt_dir = config['training']['checkpoint_path']
     encoder.load_weights(os.path.join(ckpt_dir, f"{model_id}_encoder.weights.h5"))
     decoder.load_weights(os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5"))
 
-    bleus, meteors, rouges = [], [], []
+    # Metric Lists
+    b1_l, b2_l, b3_l, b4_l, met_l, rou_l = [], [], [], [], [], []
 
-    # Run name "Evaluation" inside that architecture's experiment
     with mlflow.start_run(run_name="Evaluation_Phase"):
-        print(f"--- EVALUATING: {model_id} ---")
+        print(f"\n--- Running Full Evaluation for {model_id} ---")
         os.makedirs("results/samples", exist_ok=True)
 
-        for i in range(min(50, len(test_imgs))):
+        for i in range(min(100, len(test_imgs))):
             img_tensor, _ = loader.image_processor.preprocess_image(test_imgs[i])
             pred = generate_caption(tf.expand_dims(img_tensor, 0), encoder, decoder, loader.text_processor, config)
-            b, m, r = calculate_all_metrics(test_caps[i], pred)
-            bleus.append(b); meteors.append(m); rouges.append(r)
+            
+            (b1, b2, b3, b4), m, r = calculate_all_metrics(test_caps[i], pred)
+            
+            b1_l.append(b1); b2_l.append(b2); b3_l.append(b3); b4_l.append(b4)
+            met_l.append(m); rou_l.append(r)
 
             if i < 5:
                 plt.figure(figsize=(10, 8))
                 plt.imshow(img_tensor.numpy() * 0.5 + 0.5)
                 c_real = test_caps[i].replace('<start>', '').replace('<end>', '').strip()
                 c_pred = pred.replace('<start>', '').replace('<end>', '').strip()
-                plt.title(f"REAL: {c_real}\nPRED: {c_pred}\nBLEU-4: {b:.4f}")
+                plt.title(f"REAL: {c_real}\nPRED: {c_pred}\nBLEU-4: {b4:.4f}")
                 plt.axis('off')
                 
                 fig_name = f"Sample_{i}.png"
@@ -85,9 +88,22 @@ def main():
                 plt.close()
                 mlflow.log_artifact(f"results/samples/{fig_name}")
 
-        avg_b, avg_m, avg_r = np.mean(bleus), np.mean(meteors), np.mean(rouges)
-        mlflow.log_metrics({"test_bleu4": avg_b, "test_meteor": avg_m, "test_rougeL": avg_r})
-        print(f"DONE | BLEU-4: {avg_b:.4f}")
+        # Final Log to DagsHub
+        summary = {
+            "test_bleu1": np.mean(b1_l), "test_bleu2": np.mean(b2_l),
+            "test_bleu3": np.mean(b3_l), "test_bleu4": np.mean(b4_l),
+            "test_meteor": np.mean(met_l), "test_rougeL": np.mean(rou_l)
+        }
+        mlflow.log_metrics(summary)
+
+        # Print Scientific Table
+        print("\n" + "="*60)
+        print(f"FINAL METRICS TABLE: {model_id}")
+        print("-" * 60)
+        print(f"BLEU-1: {summary['test_bleu1']:.4f} | BLEU-2: {summary['test_bleu2']:.4f}")
+        print(f"BLEU-3: {summary['test_bleu3']:.4f} | BLEU-4: {summary['test_bleu4']:.4f}")
+        print(f"METEOR: {summary['test_meteor']:.4f} | ROUGE-L: {summary['test_rougeL']:.4f}")
+        print("="*60)
 
 if __name__ == "__main__":
     main()
