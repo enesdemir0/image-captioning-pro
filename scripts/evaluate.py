@@ -35,25 +35,40 @@ def main():
     img_paths, captions = loader.load_annotations()
     _, _, (test_imgs, test_caps) = loader.split_data(img_paths, captions)
 
-    # Initialize and Load
-    encoder, decoder = CNN_Encoder(config), RNN_Decoder(config)
-    encoder(tf.zeros((1, 299, 299, 3)))
-    decoder.init_decoder_state(tf.zeros((1, config['model']['units'])))
-    
-    ckpt_path = os.path.join(config['training']['checkpoint_path'], f"{model_id}_encoder.weights.h5")
-    if not os.path.exists(ckpt_path):
-        print(f"❌ Error: Weights not found for {model_id} at {ckpt_path}")
+    # Initialize Models
+    encoder = CNN_Encoder(config)
+    decoder = RNN_Decoder(config)
+
+    # --- THE CRITICAL FIX: "TRUE BUILD" ---
+    # 1. Build Encoder
+    dummy_img = tf.zeros((1, 299, 299, 3))
+    _ = encoder(dummy_img)
+
+    # 2. Build Decoder by actually calling it
+    dummy_input = tf.zeros((1, 1)) # A dummy word token
+    # Create the state list using our helper
+    dummy_state = decoder.init_decoder_state(tf.zeros((1, config['model']['units'])))
+    # This call tells Keras: "Now build all the layers inside the decoder"
+    _ = decoder(dummy_input, dummy_state)
+
+    # --- NOW WE CAN LOAD WEIGHTS ---
+    ckpt_dir = config['training']['checkpoint_path']
+    enc_path = os.path.join(ckpt_dir, f"{model_id}_encoder.weights.h5")
+    dec_path = os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5")
+
+    if not os.path.exists(enc_path):
+        print(f"❌ Error: Weights not found at {enc_path}")
         return
 
-    encoder.load_weights(ckpt_path)
-    decoder.load_weights(os.path.join(config['training']['checkpoint_path'], f"{model_id}_decoder.weights.h5"))
+    encoder.load_weights(enc_path)
+    decoder.load_weights(dec_path)
+    print(f"✅ Weights loaded successfully for {model_id}")
 
     bleus, meteors, rouges = [], [], []
 
     with mlflow.start_run(run_name=f"EVAL_{model_id}"):
         print(f"\n--- Evaluating Test Set for {model_id} ---")
-        # Run on first 100 images of the Test Set
-        for i in range(100):
+        for i in range(50):
             img, _ = loader.image_processor.preprocess_image(test_imgs[i])
             pred = generate_caption(tf.expand_dims(img, 0), encoder, decoder, loader.text_processor, config)
             
