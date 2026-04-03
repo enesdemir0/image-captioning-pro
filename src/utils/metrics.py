@@ -8,14 +8,12 @@ try:
     nltk.data.find('corpora/wordnet')
     nltk.data.find('corpora/omw-1.4')
 except LookupError:
-    nltk.download('wordnet')
-    nltk.download('omw-1.4')
-    nltk.download('punkt')
+    nltk.download('wordnet', quiet=True)
+    nltk.download('omw-1.4', quiet=True)
+    nltk.download('punkt', quiet=True)
 
 def calculate_all_metrics(real_caption, predicted_caption):
-    """
-    Calculates BLEU-4, METEOR, and ROUGE-L.
-    """
+    """Calculates BLEU-4, METEOR, and ROUGE-L."""
     real_words = real_caption.replace('<start>', '').replace('<end>', '').strip().split()
     pred_words = predicted_caption.replace('<start>', '').replace('<end>', '').strip().split()
 
@@ -29,7 +27,6 @@ def calculate_all_metrics(real_caption, predicted_caption):
     rouge_l = scores['rougeL'].fmeasure
 
     # 3. METEOR
-    # NLTK expects the reference to be a list of lists of words
     meteor = meteor_score([real_words], pred_words)
 
     return bleu4, meteor, rouge_l
