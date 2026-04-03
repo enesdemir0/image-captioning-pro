@@ -1,8 +1,11 @@
 dataset:
   name: "MS-COCO-2014"
   url_annotations: "http://images.cocodataset.org/annotations/annotations_trainval2014.zip"
-  image_dir: "data/train2014"
-  caption_file: "data/annotations/captions_train2014.json"
+  #image_dir: "data/train2014"
+  #caption_file: "data/annotations/captions_train2014.json"
+  #image_prefix: "COCO_train2014_"
+  image_dir: "/kaggle/input/coco-2014-dataset-for-image-captioning/train2014"
+  caption_file: "/kaggle/input/coco-2014-dataset-for-image-captioning/annotations/captions_train2014.json"
   image_prefix: "COCO_train2014_"
   vocab_size: 10000
   max_caption_length: 25
@@ -20,8 +23,9 @@ training:
   batch_size: 64
   learning_rate: 0.0005
   use_teacher_forcing: False 
-  checkpoint_path: "/content/drive/MyDrive/Image_Captioning_Models/checkpoints/"
-
+  #checkpoint_path: "/content/drive/MyDrive/Image_Captioning_Models/checkpoints/"
+  checkpoint_path: "/kaggle/working/checkpoints/"
+  
 mlflow:
   tracking_uri: "https://dagshub.com/enesdemir0/image-captioning-pro.mlflow"
   repo_owner: "enesdemir0"
