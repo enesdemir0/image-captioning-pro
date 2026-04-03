@@ -50,17 +50,14 @@ class RNN_Decoder(tf.keras.Model):
 
     def init_decoder_state(self, encoder_output):
         """
-        Initializes the state of EVERY layer in the stack using the 
-        Encoder's output (Dense Map).
+        encoder_output shape: (batch_size, units) 
+        This now correctly matches our 512 units.
         """
-        # If it's an LSTM, every layer needs 2 tensors (h and c)
         if self.cell_type == "LSTM":
             state = []
             for _ in range(self.num_layers):
-                state.append(encoder_output) # Hidden state (h)
-                state.append(encoder_output) # Cell state (c)
+                state.append(encoder_output) # h
+                state.append(encoder_output) # c
             return state
-        
-        # If it's a GRU, every layer needs 1 tensor
         else:
             return [encoder_output for _ in range(self.num_layers)]

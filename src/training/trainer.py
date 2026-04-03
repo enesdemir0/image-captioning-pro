@@ -31,15 +31,17 @@ class CaptionTrainer:
 
     @tf.function
     def train_step(self, img_tensor, target):
-        """Processes one batch of images and captions."""
         loss = 0
         batch_size = img_tensor.shape[0]
         
-        # Initialize the decoder state using the encoder output
-        # (This is the 'Dense Map' connection we built earlier)
-        features = self.encoder(img_tensor)
-        # For baseline, we use the mean of features to initialize the state
+        # 1. Get features from encoder
+        features = self.encoder(img_tensor) # Now features are (batch, regions, 512)
+        
+        # 2. Reduce to a single vector to initialize the RNN (The Dense Map)
+        # mean_features shape: (batch, 512)
         mean_features = tf.reduce_mean(features, axis=1)
+        
+        # 3. Initialize hidden state
         hidden = self.decoder.init_decoder_state(mean_features)
 
         # The first input is always the <start> token
