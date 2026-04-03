@@ -28,7 +28,11 @@ def generate_caption(image_tensor, encoder, decoder, text_processor, config):
 
 def main():
     config = load_config()
-    dagshub.init(repo_owner=config['mlflow']['repo_owner'], repo_name=config['mlflow']['repo_name'], mlflow=True)
+    dagshub.init(
+    repo_owner=config['mlflow']['repo_owner'], 
+    repo_name=config['mlflow']['repo_name'], 
+    mlflow=True
+    )
     mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
     
     loader = DataLoader(config)
