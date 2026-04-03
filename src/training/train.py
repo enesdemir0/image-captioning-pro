@@ -32,24 +32,25 @@ def main():
     decoder = RNN_Decoder(config)
     trainer = CaptionTrainer(encoder, decoder, loader.text_processor, config)
 
-    # Building models to allow weight loading/saving
+    # Build models to allow loading
     encoder(tf.zeros((1, 299, 299, 3)))
     decoder(tf.zeros((1, 1)), decoder.init_decoder_state(tf.zeros((1, config['model']['units']))))
 
-    # --- RESUME LOGIC (Checks Drive folder) ---
+    # --- CHECKPOINT PATHING ---
     ckpt_dir = config['training']['checkpoint_path']
     if not os.path.exists(ckpt_dir): os.makedirs(ckpt_dir, exist_ok=True)
-    
     enc_path = os.path.join(ckpt_dir, f"{model_id}_encoder.weights.h5")
     dec_path = os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5")
 
+    # --- AUTO-RESUME ---
     if os.path.exists(enc_path):
-        print(f"🔄 Resuming {model_id} from existing Drive checkpoint...")
+        print(f"🔄 Resuming {model_id} from Drive weights...")
         encoder.load_weights(enc_path)
         decoder.load_weights(dec_path)
 
     with mlflow.start_run(run_name="Training_Phase"):
         mlflow.log_params(config['model'])
+        print(f"🚀 Starting {config['training']['epochs']} epochs for {model_id}...")
         
         for epoch in range(config['training']['epochs']):
             t_loss = 0
@@ -65,7 +66,7 @@ def main():
             mlflow.log_metric("val_loss", avg_v, step=epoch)
             print(f"Epoch {epoch+1} | Train: {avg_t:.4f} | Val: {avg_v:.4f}")
 
-            # --- SAVE EVERY 5 EPOCHS DIRECTLY TO DRIVE ---
+            # SAVE EVERY 5 EPOCHS FOR SAFETY
             if (epoch + 1) % 5 == 0:
                 encoder.save_weights(enc_path)
                 decoder.save_weights(dec_path)
@@ -74,7 +75,7 @@ def main():
         # Final Save
         encoder.save_weights(enc_path)
         decoder.save_weights(dec_path)
-        print("✅ Training Finished. Final weights on Drive.")
+        print("✅ Training Finished.")
 
 if __name__ == "__main__":
     main()
