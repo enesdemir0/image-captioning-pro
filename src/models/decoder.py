@@ -2,7 +2,8 @@ import tensorflow as tf
 
 class RNN_Decoder(tf.keras.Model):
     """
-    A Stacked RNN Decoder that correctly handles nested states for LSTM/GRU.
+    A robust Stacked RNN Decoder that handles variable layers and 
+    nested states for both LSTM and GRU in Keras 3.
     """
     def __init__(self, config):
         super(RNN_Decoder, self).__init__()
@@ -22,7 +23,7 @@ class RNN_Decoder(tf.keras.Model):
             cells = [tf.keras.layers.GRUCell(self.units) for _ in range(self.num_layers)]
         
         self.stacked_rnn = tf.keras.layers.StackedRNNCells(cells)
-        # return_state=True returns the nested state structure
+        # return_state=True is required to pass memory word-by-word
         self.rnn = tf.keras.layers.RNN(self.stacked_rnn, return_sequences=True, return_state=True)
 
         # 3. Output Projection
@@ -30,13 +31,19 @@ class RNN_Decoder(tf.keras.Model):
         self.fc2 = tf.keras.layers.Dense(self.vocab_size)
 
     def call(self, x, hidden_state):
-        # x shape: (batch_size, 1)
+        # Embed the word -> (batch, 1, embedding_dim)
         x = self.embedding(x)
 
-        # In Keras 3 Stacked RNN, it returns (output, final_states)
-        # where final_states matches the structure of initial_state
-        output, next_state = self.rnn(x, initial_state=hidden_state)
+        # THE FIX: Run the RNN and catch everything in one variable
+        # For a 3-layer model, rnn_output will contain [Output, State_L1, State_L2, State_L3]
+        rnn_results = self.rnn(x, initial_state=hidden_state)
+        
+        # The first element is always the word prediction output
+        output = rnn_results[0]
+        # Everything else is the state data for the next word
+        next_state = rnn_results[1:] 
 
+        # Final projection to vocabulary
         x = self.fc1(output)
         x = tf.reshape(x, (-1, x.shape[2])) 
         logits = self.fc2(x)
@@ -45,11 +52,11 @@ class RNN_Decoder(tf.keras.Model):
 
     def init_decoder_state(self, encoder_output):
         """
-        Creates the correct nested state structure.
+        Initializes the nested state structure required by StackedRNNCells.
         """
         if self.cell_type == "LSTM":
-            # MUST be a list of lists: [[h, c], [h, c], [h, c]]
+            # LSTM needs [ [h,c], [h,c], [h,c] ] for 3 layers
             return [[encoder_output, encoder_output] for _ in range(self.num_layers)]
         else:
-            # Flat list for GRU: [h, h, h]
+            # GRU needs [ h, h, h ] for 3 layers
             return [encoder_output for _ in range(self.num_layers)]
