@@ -4,6 +4,7 @@ import numpy as np
 import mlflow
 import dagshub
 import matplotlib.pyplot as plt
+from mlflow.tracking import MlflowClient # Required for the fix
 from src.utils.config_loader import load_config
 from src.data.dataset_loader import DataLoader
 from src.models.encoder import CNN_Encoder
@@ -29,45 +30,60 @@ def generate_caption(image_tensor, encoder, decoder, text_processor, config):
 def main():
     config = load_config()
     
-    # Unified Naming Convention
-    enc = config['model']['encoder_name']
-    dec = config['model']['decoder_type']
+    # 1. Standardized Naming
+    enc_name = config['model']['encoder_name']
+    dec_type = config['model']['decoder_type']
     layers = config['model']['num_layers']
     subset = config['dataset']['subset_size']
     epochs = config['training']['epochs']
+    model_id = f"ENC_{enc_name}_DEC_{dec_type}_L{layers}_S{subset}_E{epochs}"
     
-    # Format: ENC_InceptionV3_DEC_GRU_L3_S20000_E30
-    model_id = f"ENC_{enc}_DEC_{dec}_L{layers}_S{subset}_E{epochs}"
-    
+    # 2. Initialize DagsHub/MLflow
     dagshub.init(repo_owner=config['mlflow']['repo_owner'], repo_name=config['mlflow']['repo_name'], mlflow=True)
     mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
+
+    # --- THE FIX: RESTORE FROM TRASH IF DELETED ---
+    client = MlflowClient()
+    exp = client.get_experiment_by_name(model_id)
+    if exp and exp.lifecycle_stage == 'deleted':
+        print(f"♻️ Restoring deleted experiment: {model_id}")
+        client.restore_experiment(exp.experiment_id)
+    
     mlflow.set_experiment(model_id)
 
+    # 3. Data Setup
     loader = DataLoader(config)
     img_paths, captions = loader.load_annotations()
-    
-    subset_size = config['dataset'].get('subset_size', 0)
-    if subset_size > 0:
-        img_paths, captions = img_paths[:subset_size], captions[:subset_size]
+    if subset > 0:
+        img_paths, captions = img_paths[:subset], captions[:subset]
 
     (train_imgs, train_caps), _, (test_imgs, test_caps) = loader.split_data(img_paths, captions)
     loader.text_processor.fit_on_texts(train_caps)
 
-    # Initialize and Force Build
-    encoder, decoder = CNN_Encoder(config), RNN_Decoder(config)
+    # 4. Initialize and Force Build Models
+    encoder = CNN_Encoder(config)
+    decoder = RNN_Decoder(config)
     encoder(tf.zeros((1, 299, 299, 3)))
     decoder(tf.zeros((1, 1)), decoder.init_decoder_state(tf.zeros((1, config['model']['units']))))
 
-    # Load Weights
+    # 5. Load Weights
     ckpt_dir = config['training']['checkpoint_path']
-    encoder.load_weights(os.path.join(ckpt_dir, f"{model_id}_encoder.weights.h5"))
-    decoder.load_weights(os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5"))
+    enc_path = os.path.join(ckpt_dir, f"{model_id}_encoder.weights.h5")
+    dec_path = os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5")
 
-    # Metric Lists
+    if not os.path.exists(enc_path):
+        print(f"❌ Error: Could not find weights for {model_id}")
+        return
+
+    encoder.load_weights(enc_path)
+    decoder.load_weights(dec_path)
+    print(f"✅ Weights loaded successfully for evaluation.")
+
+    # 6. Evaluation Loop
     b1_l, b2_l, b3_l, b4_l, met_l, rou_l = [], [], [], [], [], []
 
     with mlflow.start_run(run_name="Evaluation_Phase"):
-        print(f"\n--- Running Full Evaluation for {model_id} ---")
+        print(f"--- Running Evaluation: {model_id} ---")
         os.makedirs("results/samples", exist_ok=True)
 
         for i in range(min(100, len(test_imgs))):
@@ -92,7 +108,7 @@ def main():
                 plt.close()
                 mlflow.log_artifact(f"results/samples/{fig_name}")
 
-        # Final Log to DagsHub
+        # Final Summary
         summary = {
             "test_bleu1": np.mean(b1_l), "test_bleu2": np.mean(b2_l),
             "test_bleu3": np.mean(b3_l), "test_bleu4": np.mean(b4_l),
@@ -100,13 +116,9 @@ def main():
         }
         mlflow.log_metrics(summary)
 
-        # Print Scientific Table
         print("\n" + "="*60)
-        print(f"FINAL METRICS TABLE: {model_id}")
-        print("-" * 60)
-        print(f"BLEU-1: {summary['test_bleu1']:.4f} | BLEU-2: {summary['test_bleu2']:.4f}")
-        print(f"BLEU-3: {summary['test_bleu3']:.4f} | BLEU-4: {summary['test_bleu4']:.4f}")
-        print(f"METEOR: {summary['test_meteor']:.4f} | ROUGE-L: {summary['test_rougeL']:.4f}")
+        print(f"FINAL RESULTS: {model_id}")
+        print(f"BLEU-4: {summary['test_bleu4']:.4f} | METEOR: {summary['test_meteor']:.4f} | ROUGE-L: {summary['test_rougeL']:.4f}")
         print("="*60)
 
 if __name__ == "__main__":
