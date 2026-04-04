@@ -30,10 +30,14 @@ def main():
     config = load_config()
     
     # Unified Naming Convention
-    enc_name = config['model']['encoder_name']
-    dec_type = config['model']['decoder_type']
+    enc = config['model']['encoder_name']
+    dec = config['model']['decoder_type']
     layers = config['model']['num_layers']
-    model_id = f"Encoder_{enc_name}_Decoder_{dec_type}_L{layers}"
+    subset = config['dataset']['subset_size']
+    epochs = config['training']['epochs']
+    
+    # Format: ENC_InceptionV3_DEC_GRU_L3_S20000_E30
+    model_id = f"ENC_{enc}_DEC_{dec}_L{layers}_S{subset}_E{epochs}"
     
     dagshub.init(repo_owner=config['mlflow']['repo_owner'], repo_name=config['mlflow']['repo_name'], mlflow=True)
     mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
