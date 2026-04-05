@@ -6,7 +6,7 @@ dataset:
   image_prefix: "COCO_train2014_"
   vocab_size: 10000
   max_caption_length: 25
-  subset_size: 20000        # Smaller subset for deeper learning
+  subset_size: 50000        # Smaller subset for deeper learning
 
 model:
   encoder_name: "InceptionV3"
@@ -16,8 +16,8 @@ model:
   embedding_dim: 256
 
 training:
-  epochs: 30                # Increased epochs
-  batch_size: 64
+  epochs: 50                # Increased epochs
+  batch_size: 128
   learning_rate: 0.0005
   use_teacher_forcing: False 
   checkpoint_path: "/content/drive/MyDrive/Image_Captioning_Models/checkpoints/"
