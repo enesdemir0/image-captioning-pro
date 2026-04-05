@@ -10,7 +10,7 @@ dataset:
 
 model:
   encoder_name: "InceptionV3"
-  decoder_type: "LSTM"
+  decoder_type: "GRU"
   num_layers: 3
   units: 512
   embedding_dim: 256
