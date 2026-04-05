@@ -9,14 +9,14 @@ dataset:
   subset_size: 50000        # Smaller subset for deeper learning
 
 model:
-  encoder_name: "InceptionV3"
-  decoder_type: "GRU"
+  encoder_name: "Xception"
+  decoder_type: "LSTM"
   num_layers: 3
   units: 512
   embedding_dim: 256
 
 training:
-  epochs: 50                # Increased epochs
+  epochs: 30                # Increased epochs
   batch_size: 128
   learning_rate: 0.0005
   use_teacher_forcing: False 
