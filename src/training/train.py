@@ -19,7 +19,8 @@ def main():
     layers = config['model']['num_layers']
     subset = config['dataset']['subset_size']
     target_epochs = config['training']['epochs']
-    model_id = f"ENC_{enc_name}_DEC_{dec_type}_L{layers}_S{subset}_E{target_epochs}"
+    tf_label = "TF" if config['training'].get('use_teacher_forcing', False) else "Base"
+    model_id = f"ENC_{enc_name}_DEC_{dec_type}_L{layers}_S{subset}_E{target_epochs}_{tf_label}"
     
     dagshub.init(repo_owner=config['mlflow']['repo_owner'], repo_name=config['mlflow']['repo_name'], mlflow=True)
     mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
