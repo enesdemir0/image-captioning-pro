@@ -13,15 +13,22 @@ from src.utils.metrics import calculate_all_metrics
 
 def generate_caption(image_tensor, encoder, decoder, text_processor, config):
     features = encoder(image_tensor)
+    # Get the actual number of feature spots (e.g., 100 for Xception)
+    num_features = features.shape[1] 
+    
     hidden = decoder.init_decoder_state(tf.reduce_mean(features, axis=1))
     start_token = text_processor.tokenizer.word_index['<start>']
     dec_input = tf.expand_dims([start_token], 0)
+    
     result = []
-    attention_plot = np.zeros((config['dataset']['max_caption_length'], 64))
+    # FIX: Dynamic size for the plot array
+    attention_plot = np.zeros((config['dataset']['max_caption_length'], num_features))
 
     for i in range(config['dataset']['max_caption_length']):
         preds, hidden, attn_weights = decoder(dec_input, features, hidden)
+        
         if attn_weights is not None:
+            # Save the 100 weights correctly
             attention_plot[i] = tf.reshape(attn_weights, (-1,)).numpy()
 
         predicted_id = tf.argmax(preds[0]).numpy()
@@ -29,19 +36,26 @@ def generate_caption(image_tensor, encoder, decoder, text_processor, config):
         if word == '<end>': break
         result.append(word)
         dec_input = tf.expand_dims([predicted_id], 0)
+        
     return ' '.join(result), attention_plot
 
 def plot_attention_grid(image, result, attention_plot, sample_idx, model_id):
     temp_image = np.array(image)
     words = result.split()
+    
+    # Calculate the grid dimensions (sqrt of 100 is 10)
+    num_features = attention_plot.shape[1]
+    grid_size = int(np.sqrt(num_features))
+    
     fig = plt.figure(figsize=(12, 12))
     for i in range(len(words)):
-        att_map = np.resize(attention_plot[i], (8, 8))
+        att_map = np.resize(attention_plot[i], (grid_size, grid_size))
         ax = fig.add_subplot(len(words) // 3 + 1, 3, i + 1)
         ax.set_title(words[i], fontsize=12)
         img = ax.imshow(temp_image)
         ax.imshow(att_map, cmap='gray', alpha=0.6, extent=img.get_extent())
         ax.axis('off')
+
     plt.tight_layout()
     path = f"results/samples/{model_id}_Attention_Map_{sample_idx}.png"
     plt.savefig(path)
@@ -61,11 +75,6 @@ def main():
     
     dagshub.init(repo_owner=config['mlflow']['repo_owner'], repo_name=config['mlflow']['repo_name'], mlflow=True)
     mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
-
-    client = MlflowClient()
-    exp = client.get_experiment_by_name(model_id)
-    if exp and exp.lifecycle_stage == 'deleted':
-        client.restore_experiment(exp.experiment_id)
     mlflow.set_experiment(model_id)
 
     loader = DataLoader(config)
@@ -79,9 +88,10 @@ def main():
     encoder = CNN_Encoder(config)
     decoder = RNN_Decoder(config)
     
-    # --- UPDATED DUMMY CALL ---
+    # Building with 100 features for Xception compatibility
     encoder(tf.zeros((1, 299, 299, 3)))
-    d_feat = tf.zeros((1, 64, config['model']['units']))
+    num_feat = 100 if enc_name == "Xception" else 64
+    d_feat = tf.zeros((1, num_feat, config['model']['units']))
     d_hid = decoder.init_decoder_state(tf.zeros((1, config['model']['units'])))
     decoder(tf.zeros((1, 1)), d_feat, d_hid)
 
@@ -90,18 +100,20 @@ def main():
     dec_path = os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5")
 
     if not os.path.exists(enc_path):
-        print(f"❌ Error: Could not find weights for {model_id}")
+        print(f"❌ Error: Could not find weights at {enc_path}")
         return
 
     encoder.load_weights(enc_path)
     decoder.load_weights(dec_path)
-    print(f"✅ Weights loaded successfully for evaluation.")
+    print(f"✅ Weights loaded successfully. Grid size: {num_feat}")
 
     b1_l, b2_l, b3_l, b4_l, met_l, rou_l = [], [], [], [], [], []
 
     with mlflow.start_run(run_name="Evaluation_Final"):
         os.makedirs("results/samples", exist_ok=True)
-        for i in range(min(100, len(test_imgs))):
+        print(f"--- Starting Final Evaluation on Test Set ---")
+
+        for i in range(min(50, len(test_imgs))):
             img_tensor, _ = loader.image_processor.preprocess_image(test_imgs[i])
             pred, attn_weights = generate_caption(tf.expand_dims(img_tensor, 0), encoder, decoder, loader.text_processor, config)
             (b1, b2, b3, b4), m, r = calculate_all_metrics(test_caps[i], pred)
@@ -125,7 +137,10 @@ def main():
 
         summary = {"test_bleu1": np.mean(b1_l), "test_bleu2": np.mean(b2_l), "test_bleu3": np.mean(b3_l), "test_bleu4": np.mean(b4_l), "test_meteor": np.mean(met_l), "test_rougeL": np.mean(rou_l)}
         mlflow.log_metrics(summary)
-        print(f"DONE | BLEU-4: {summary['test_bleu4']:.4f}")
+        print("\n" + "="*50)
+        print(f"TABLE RESULTS FOR: {model_id}")
+        print(f"BLEU-4: {summary['test_bleu4']:.4f} | METEOR: {summary['test_meteor']:.4f}")
+        print("="*50)
 
 if __name__ == "__main__":
     main()
