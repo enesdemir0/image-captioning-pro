@@ -34,12 +34,11 @@ class CaptionTrainer:
         loss = 0
         batch_size = img_tensor.shape[0]
         
-        # WE MOVE EVERYTHING INSIDE THE TAPE NOW:
         with tf.GradientTape() as tape:
-            # 1. Extract features INSIDE the tape
+            # 1. Get the GRID of features (e.g., 8x8 = 64 spots)
             features = self.encoder(img_tensor)
             
-            # 2. Initialize hidden state
+            # 2. Use the MEAN only for the FIRST initialization
             mean_features = tf.reduce_mean(features, axis=1)
             hidden = self.decoder.init_decoder_state(mean_features)
 
@@ -47,9 +46,10 @@ class CaptionTrainer:
                 [self.text_processor.tokenizer.word_index['<start>']] * batch_size, 1
             )
 
-            # 3. Predict the sentence
             for i in range(1, target.shape[1]):
-                predictions, hidden = self.decoder(dec_input, hidden)
+                # PASS THE WHOLE GRID (features) TO THE DECODER
+                predictions, hidden, _ = self.decoder(dec_input, features, hidden)
+                
                 loss += self.loss_function(target[:, i], predictions)
 
                 if not self.config['training'].get('use_teacher_forcing', False):
@@ -58,8 +58,7 @@ class CaptionTrainer:
                 else:
                     dec_input = tf.expand_dims(target[:, i], 1)
 
-        # 4. Apply gradients to BOTH models
-        total_loss = (loss / int(target.shape[1]))
+        total_loss = (loss / int(target.shape[1])) 
         trainable_variables = self.encoder.trainable_variables + self.decoder.trainable_variables
         gradients = tape.gradient(loss, trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, trainable_variables))
