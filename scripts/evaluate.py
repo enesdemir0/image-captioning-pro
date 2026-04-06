@@ -42,18 +42,21 @@ def generate_caption(image_tensor, encoder, decoder, text_processor, config):
 def plot_attention_grid(image, result, attention_plot, sample_idx, model_id):
     temp_image = np.array(image)
     words = result.split()
+    fig = plt.figure(figsize=(12, 12))
     
-    # Calculate the grid dimensions (sqrt of 100 is 10)
     num_features = attention_plot.shape[1]
     grid_size = int(np.sqrt(num_features))
     
-    fig = plt.figure(figsize=(12, 12))
     for i in range(len(words)):
         att_map = np.resize(attention_plot[i], (grid_size, grid_size))
+        
         ax = fig.add_subplot(len(words) // 3 + 1, 3, i + 1)
         ax.set_title(words[i], fontsize=12)
         img = ax.imshow(temp_image)
-        ax.imshow(att_map, cmap='gray', alpha=0.6, extent=img.get_extent())
+        
+        # --- THE PRO FIX: SMOOTHING ---
+        # We use 'bilinear' interpolation to make it look like a glow
+        ax.imshow(att_map, cmap='gray', alpha=0.6, extent=img.get_extent(), interpolation='bilinear')
         ax.axis('off')
 
     plt.tight_layout()
