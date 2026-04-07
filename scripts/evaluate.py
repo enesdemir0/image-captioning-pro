@@ -11,54 +11,64 @@ from src.models.encoder import CNN_Encoder
 from src.models.decoder import RNN_Decoder
 from src.utils.metrics import calculate_all_metrics
 
-def generate_caption(image_tensor, encoder, decoder, text_processor, config):
+def generate_caption_beam(image_tensor, encoder, decoder, text_processor, config, beam_index=3):
+    """Uses Beam Search to maximize BLEU scores (The Pro Way)."""
+    start_token = [text_processor.tokenizer.word_index['<start>']]
+    beam = [[start_token, 0.0]]
     features = encoder(image_tensor)
-    # Get the actual number of feature spots (e.g., 100 for Xception)
-    num_features = features.shape[1] 
-    
     hidden = decoder.init_decoder_state(tf.reduce_mean(features, axis=1))
-    start_token = text_processor.tokenizer.word_index['<start>']
-    dec_input = tf.expand_dims([start_token], 0)
-    
+
+    for i in range(config['dataset']['max_caption_length']):
+        candidates = []
+        for s in beam:
+            dec_input = tf.expand_dims([s[0][-1]], 0)
+            preds, hidden, _ = decoder(dec_input, features, hidden)
+            top_preds = tf.math.top_k(preds[0], k=beam_index)
+            for j in range(beam_index):
+                word_id = top_preds.indices[j].numpy()
+                prob = top_preds.values[j].numpy()
+                candidates.append([s[0] + [word_id], s[1] + prob])
+        
+        beam = sorted(candidates, key=lambda x: x[1], reverse=True)[:beam_index]
+        if text_processor.tokenizer.index_word.get(beam[0][0][-1]) == '<end>': break
+
+    best_path = beam[0][0]
+    final_caption = [text_processor.tokenizer.index_word.get(i, '<unk>') for i in best_path]
+    return ' '.join(final_caption[1:-1])
+
+def generate_caption_greedy(image_tensor, encoder, decoder, text_processor, config):
+    """Greedy Search for Heatmap visualization."""
+    features = encoder(image_tensor)
+    num_features = features.shape[1] 
+    hidden = decoder.init_decoder_state(tf.reduce_mean(features, axis=1))
+    dec_input = tf.expand_dims([text_processor.tokenizer.word_index['<start>']], 0)
     result = []
-    # FIX: Dynamic size for the plot array
     attention_plot = np.zeros((config['dataset']['max_caption_length'], num_features))
 
     for i in range(config['dataset']['max_caption_length']):
         preds, hidden, attn_weights = decoder(dec_input, features, hidden)
-        
         if attn_weights is not None:
-            # Save the 100 weights correctly
             attention_plot[i] = tf.reshape(attn_weights, (-1,)).numpy()
-
         predicted_id = tf.argmax(preds[0]).numpy()
         word = text_processor.tokenizer.index_word.get(predicted_id, '<unk>')
         if word == '<end>': break
         result.append(word)
         dec_input = tf.expand_dims([predicted_id], 0)
-        
     return ' '.join(result), attention_plot
 
 def plot_attention_grid(image, result, attention_plot, sample_idx, model_id):
     temp_image = np.array(image)
     words = result.split()
-    fig = plt.figure(figsize=(12, 12))
-    
     num_features = attention_plot.shape[1]
     grid_size = int(np.sqrt(num_features))
-    
+    fig = plt.figure(figsize=(12, 12))
     for i in range(len(words)):
         att_map = np.resize(attention_plot[i], (grid_size, grid_size))
-        
         ax = fig.add_subplot(len(words) // 3 + 1, 3, i + 1)
         ax.set_title(words[i], fontsize=12)
         img = ax.imshow(temp_image)
-        
-        # --- THE PRO FIX: SMOOTHING ---
-        # We use 'bilinear' interpolation to make it look like a glow
         ax.imshow(att_map, cmap='gray', alpha=0.6, extent=img.get_extent(), interpolation='bilinear')
         ax.axis('off')
-
     plt.tight_layout()
     path = f"results/samples/{model_id}_Attention_Map_{sample_idx}.png"
     plt.savefig(path)
@@ -88,10 +98,7 @@ def main():
     (train_imgs, train_caps), _, (test_imgs, test_caps) = loader.split_data(img_paths, captions)
     loader.text_processor.fit_on_texts(train_caps)
 
-    encoder = CNN_Encoder(config)
-    decoder = RNN_Decoder(config)
-    
-    # Building with 100 features for Xception compatibility
+    encoder, decoder = CNN_Encoder(config), RNN_Decoder(config)
     encoder(tf.zeros((1, 299, 299, 3)))
     num_feat = 100 if enc_name == "Xception" else 64
     d_feat = tf.zeros((1, num_feat, config['model']['units']))
@@ -99,51 +106,43 @@ def main():
     decoder(tf.zeros((1, 1)), d_feat, d_hid)
 
     ckpt_dir = config['training']['checkpoint_path']
-    enc_path = os.path.join(ckpt_dir, f"{model_id}_encoder.weights.h5")
-    dec_path = os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5")
-
-    if not os.path.exists(enc_path):
-        print(f"❌ Error: Could not find weights at {enc_path}")
-        return
-
-    encoder.load_weights(enc_path)
-    decoder.load_weights(dec_path)
-    print(f"✅ Weights loaded successfully. Grid size: {num_feat}")
+    encoder.load_weights(os.path.join(ckpt_dir, f"{model_id}_encoder.weights.h5"))
+    decoder.load_weights(os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5"))
 
     b1_l, b2_l, b3_l, b4_l, met_l, rou_l = [], [], [], [], [], []
 
     with mlflow.start_run(run_name="Evaluation_Final"):
         os.makedirs("results/samples", exist_ok=True)
-        print(f"--- Starting Final Evaluation on Test Set ---")
+        print(f"--- Starting Final Evaluation with Beam Search ---")
 
         for i in range(min(50, len(test_imgs))):
             img_tensor, _ = loader.image_processor.preprocess_image(test_imgs[i])
-            pred, attn_weights = generate_caption(tf.expand_dims(img_tensor, 0), encoder, decoder, loader.text_processor, config)
-            (b1, b2, b3, b4), m, r = calculate_all_metrics(test_caps[i], pred)
+            
+            # --- BEAM SEARCH FOR METRICS ---
+            pred_beam = generate_caption_beam(tf.expand_dims(img_tensor, 0), encoder, decoder, loader.text_processor, config)
+            (b1, b2, b3, b4), m, r = calculate_all_metrics(test_caps[i], pred_beam)
             b1_l.append(b1); b2_l.append(b2); b3_l.append(b3); b4_l.append(b4)
             met_l.append(m); rou_l.append(r)
 
+            # --- GREEDY FOR HEATMAP ARTIFACTS ---
             if i < 5:
-                plt.figure(figsize=(10, 8))
+                pred_greedy, attn_weights = generate_caption_greedy(tf.expand_dims(img_tensor, 0), encoder, decoder, loader.text_processor, config)
                 display_img = img_tensor.numpy() * 0.5 + 0.5
+                plt.figure(figsize=(10, 8))
                 plt.imshow(display_img)
-                c_real, c_pred = test_caps[i].replace('<start>', '').replace('<end>', '').strip(), pred.replace('<start>', '').replace('<end>', '').strip()
-                plt.title(f"REAL: {c_real}\nPRED: {c_pred}\nBLEU-4: {b4:.4f}")
+                plt.title(f"BEAM PRED: {pred_beam}\nBLEU-4: {b4:.4f}")
                 plt.axis('off')
-                fig_path = f"results/samples/Sample_{i}.png"
-                plt.savefig(fig_path)
+                plt.savefig(f"results/samples/Sample_{i}.png")
                 plt.close()
-                mlflow.log_artifact(fig_path)
+                mlflow.log_artifact(f"results/samples/Sample_{i}.png")
+                
                 if attn_type != 'None':
-                    heatmap_path = plot_attention_grid(display_img, pred, attn_weights, i, model_id)
+                    heatmap_path = plot_attention_grid(display_img, pred_greedy, attn_weights, i, model_id)
                     mlflow.log_artifact(heatmap_path)
 
         summary = {"test_bleu1": np.mean(b1_l), "test_bleu2": np.mean(b2_l), "test_bleu3": np.mean(b3_l), "test_bleu4": np.mean(b4_l), "test_meteor": np.mean(met_l), "test_rougeL": np.mean(rou_l)}
         mlflow.log_metrics(summary)
-        print("\n" + "="*50)
-        print(f"TABLE RESULTS FOR: {model_id}")
-        print(f"BLEU-4: {summary['test_bleu4']:.4f} | METEOR: {summary['test_meteor']:.4f}")
-        print("="*50)
+        print(f"\nFinal BLEU-4 (with Beam Search): {summary['test_bleu4']:.4f}")
 
 if __name__ == "__main__":
     main()
