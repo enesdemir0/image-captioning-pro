@@ -12,11 +12,12 @@ model:
   encoder_name: "Xception"
   decoder_type: "LSTM"
   num_layers: 3
-  units: 512
+  units: 1024
   embedding_dim: 256
   # --- PHASE 3 SETTING ---
   # Options: "bahdanau", "dot", "scaled_dot"
-  attention_type: "ran" 
+  attention_type: "scaled_dot" 
+
 
 training:
   epochs: 50
@@ -24,6 +25,7 @@ training:
   learning_rate: 0.0005
   use_teacher_forcing: True # Keep this TRUE for Attention stability
   checkpoint_path: "/content/drive/MyDrive/Image_Captioning_Models/checkpoints/"
+  optimizer_type: "greywolf"
 
 mlflow:
   tracking_uri: "https://dagshub.com/enesdemir0/image-captioning-pro.mlflow"

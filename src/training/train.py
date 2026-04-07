@@ -12,82 +12,70 @@ from src.training.trainer import CaptionTrainer
 
 def main():
     config = load_config()
-    enc_name = config['model']['encoder_name']
-    dec_type = config['model']['decoder_type']
-    layers = config['model']['num_layers']
-    subset = config['dataset']['subset_size']
-    target_epochs = config['training']['epochs']
-    tf_label = "TF" if config['training'].get('use_teacher_forcing', False) else "Base"
-    attn_type = config['model'].get('attention_type', 'None')
-    model_id = f"ENC_{enc_name}_DEC_{dec_type}_L{layers}_S{subset}_E{target_epochs}_{tf_label}_{attn_type}"
+    
+    # --- METADATA NAMING ---
+    enc, dec = config['model']['encoder_name'], config['model']['decoder_type']
+    layers, units = config['model']['num_layers'], config['model']['units']
+    subset, epochs = config['dataset']['subset_size'], config['training']['epochs']
+    attn = config['model'].get('attention_type', 'None')
+    opt = "GWO" if config['training'].get('optimizer_type') == "greywolf" else "Adam"
+    tf_val = "TF" if config['training']['use_teacher_forcing'] else "Base"
+
+    model_id = f"ENC_{enc}_DEC_{dec}_L{layers}_U{units}_S{subset}_E{epochs}_{tf_val}_{attn}_{opt}"
     
     dagshub.init(repo_owner=config['mlflow']['repo_owner'], repo_name=config['mlflow']['repo_name'], mlflow=True)
     mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
-
+    
     client = MlflowClient()
     exp = client.get_experiment_by_name(model_id)
-    if exp and exp.lifecycle_stage == 'deleted':
-        client.restore_experiment(exp.experiment_id)
+    if exp and exp.lifecycle_stage == 'deleted': client.restore_experiment(exp.experiment_id)
     mlflow.set_experiment(model_id)
 
     loader = DataLoader(config)
     img_paths, captions = loader.load_annotations()
-    if subset > 0:
-        img_paths, captions = img_paths[:subset], captions[:subset]
-
-    (tr_i, tr_c), (vl_i, vl_c), (ts_i, ts_c) = loader.split_data(img_paths, captions)
+    if subset > 0: img_paths, captions = img_paths[:subset], captions[:subset]
+    (tr_i, tr_c), (vl_i, vl_c), _ = loader.split_data(img_paths, captions)
     train_ds = loader.get_dataset(tr_i, tr_c, batch_size=config['training']['batch_size'], is_training=True)
     val_ds = loader.get_dataset(vl_i, vl_c, batch_size=config['training']['batch_size'], is_training=False)
 
-    encoder = CNN_Encoder(config)
-    decoder = RNN_Decoder(config)
+    encoder, decoder = CNN_Encoder(config), RNN_Decoder(config)
     trainer = CaptionTrainer(encoder, decoder, loader.text_processor, config)
-
-    # --- UPDATED DUMMY CALL ---
+    
+    # Build
     encoder(tf.zeros((1, 299, 299, 3)))
-    d_feat = tf.zeros((1, 64, config['model']['units']))
-    d_hid = decoder.init_decoder_state(tf.zeros((1, config['model']['units'])))
-    decoder(tf.zeros((1, 1)), d_feat, d_hid)
+    num_f = 100 if enc == "Xception" else 64
+    decoder(tf.zeros((1, 1)), tf.zeros((1, num_f, units)), decoder.init_decoder_state(tf.zeros((1, units))))
 
     ckpt_dir = config['training']['checkpoint_path']
-    if not os.path.exists(ckpt_dir): os.makedirs(ckpt_dir, exist_ok=True)
-    enc_path = os.path.join(ckpt_dir, f"{model_id}_encoder.weights.h5")
-    dec_path = os.path.join(ckpt_dir, f"{model_id}_decoder.weights.h5")
+    os.makedirs(ckpt_dir, exist_ok=True)
+    enc_path, dec_path = os.path.join(ckpt_dir, f"{model_id}_enc.weights.h5"), os.path.join(ckpt_dir, f"{model_id}_dec.weights.h5")
     meta_path = os.path.join(ckpt_dir, f"{model_id}_meta.json")
 
     start_epoch = 0
     if os.path.exists(enc_path) and os.path.exists(meta_path):
-        with open(meta_path, 'r') as f:
-            start_epoch = json.load(f)['last_completed_epoch']
-        if start_epoch < target_epochs:
-            print(f"🔄 Resuming from Epoch {start_epoch}...")
-            encoder.load_weights(enc_path)
-            decoder.load_weights(dec_path)
-        else:
-            print("✅ Already finished.")
-            return
+        with open(meta_path, 'r') as f: start_epoch = json.load(f)['last_completed_epoch']
+        if start_epoch < epochs:
+            encoder.load_weights(enc_path); decoder.load_weights(dec_path)
+        else: return
 
-    with mlflow.start_run(run_name=f"Training_Phase"):
-        mlflow.log_params(config['model'])
-        for epoch in range(start_epoch, target_epochs):
-            t_loss = 0
-            for batch, (img, target) in enumerate(train_ds):
-                t_loss += trainer.train_step(img, target)
-            v_loss = 0
-            for v_batch, (v_img, v_target) in enumerate(val_ds):
-                v_loss += trainer.train_step(v_img, v_target)
+    with mlflow.start_run(run_name="Training"):
+        mlflow.log_params(config['model']); mlflow.log_params(config['training'])
+        for epoch in range(start_epoch, epochs):
+            if opt == "GWO":
+                current_lr = trainer.update_metaheuristic_lr(epoch, epochs)
+                mlflow.log_metric("learning_rate", current_lr, step=epoch)
+
+            t_l = 0
+            for batch, (img, tgt) in enumerate(train_ds): t_l += trainer.train_step(img, tgt)
+            v_l = 0
+            for v_batch, (v_img, v_tgt) in enumerate(val_ds): v_l += trainer.train_step(v_img, v_tgt)
             
-            avg_t, avg_v = (t_loss/(batch+1)).numpy(), (v_loss/(v_batch+1)).numpy()
-            mlflow.log_metric("train_loss", avg_t, step=epoch)
-            mlflow.log_metric("val_loss", avg_v, step=epoch)
-            print(f"Epoch {epoch+1}/{target_epochs} | Train Loss: {avg_t:.4f} | Val Loss: {avg_v:.4f}")
+            mlflow.log_metrics({"train_loss": (t_l/(batch+1)).numpy(), "val_loss": (v_l/(v_batch+1)).numpy()}, step=epoch)
+            print(f"Epoch {epoch+1} | Train: {t_l/(batch+1):.4f} | Val: {v_l/(v_batch+1):.4f}")
 
-            if (epoch + 1) % 5 == 0 or (epoch + 1) == target_epochs:
-                encoder.save_weights(enc_path)
-                decoder.save_weights(dec_path)
-                with open(meta_path, 'w') as f:
-                    json.dump({'last_completed_epoch': epoch + 1}, f)
-                print(f"💾 Checkpoint saved at Epoch {epoch+1}")
+            if (epoch + 1) % 5 == 0 or (epoch + 1) == epochs:
+                encoder.save_weights(enc_path); decoder.save_weights(dec_path)
+                with open(meta_path, 'w') as f: json.dump({'last_completed_epoch': epoch+1}, f)
 
 if __name__ == "__main__":
     main()
