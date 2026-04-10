@@ -6,7 +6,7 @@ dataset:
   image_prefix: "COCO_train2014_"
   vocab_size: 10000
   max_caption_length: 25
-  subset_size: 150000       # 3X MORE DATA THAN BEFORE
+  subset_size: 0       # 3X MORE DATA THAN BEFORE
 
 model:
   encoder_name: "Xception"
