@@ -6,26 +6,23 @@ dataset:
   image_prefix: "COCO_train2014_"
   vocab_size: 10000
   max_caption_length: 25
-  subset_size: 50000
+  subset_size: 150000       # 3X MORE DATA THAN BEFORE
 
 model:
   encoder_name: "Xception"
   decoder_type: "LSTM"
   num_layers: 3
-  units: 1024
+  units: 512                # BACK TO STABLE UNITS
   embedding_dim: 256
-  # --- PHASE 3 SETTING ---
-  # Options: "bahdanau", "dot", "scaled_dot"
-  attention_type: "scaled_dot" 
-
+  attention_type: "scaled_dot" # THE BEST MATH
 
 training:
-  epochs: 50
-  batch_size: 128
+  epochs: 50                # FULL DEPTH
+  batch_size: 256           # A100 MAX SPEED
   learning_rate: 0.0005
-  use_teacher_forcing: True # Keep this TRUE for Attention stability
+  use_teacher_forcing: True 
+  optimizer_type: "adam"    # STABLE OPTIMIZER
   checkpoint_path: "/content/drive/MyDrive/Image_Captioning_Models/checkpoints/"
-  optimizer_type: "greywolf"
 
 mlflow:
   tracking_uri: "https://dagshub.com/enesdemir0/image-captioning-pro.mlflow"
