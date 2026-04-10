@@ -15,24 +15,34 @@ class DataLoader:
         self.image_prefix = config['dataset'].get('image_prefix', "") 
 
     def load_annotations(self):
+        """Reads MS-COCO JSON and verifies every image file exists."""
         with open(self.caption_file, 'r') as f:
             annotations = json.load(f)
+        
         all_captions, all_img_paths = [], []
+        skipped_count = 0
+        
+        print(f"🔍 Verifying image files in {self.image_dir}...")
         for ann in annotations['annotations']:
-            caption = self.text_processor.clean_caption(ann['caption'])
             img_name = f"{self.image_prefix}{str(ann['image_id']).zfill(12)}.jpg"
-            all_img_paths.append(os.path.join(self.image_dir, img_name))
-            all_captions.append(caption)
+            full_path = os.path.join(self.image_dir, img_name)
+            
+            # --- THE SAFETY CHECK ---
+            if os.path.exists(full_path):
+                caption = self.text_processor.clean_caption(ann['caption'])
+                all_img_paths.append(full_path)
+                all_captions.append(caption)
+            else:
+                skipped_count += 1
+
+        print(f"✅ Verified {len(all_img_paths)} images. Skipped {skipped_count} missing files.")
         return all_img_paths, all_captions
 
     def split_data(self, img_paths, captions):
         """Creates a 70/15/15 split: Train, Val, and Test."""
-        # 1. Separate the 'Test' set (15%)
         train_val_imgs, test_imgs, train_val_caps, test_caps = train_test_split(
             img_paths, captions, test_size=0.15, random_state=42
         )
-        # 2. Separate 'Train' and 'Val' from the remainder
-        # (0.176 x 0.85 approx = 0.15 of the total)
         train_imgs, val_imgs, train_caps, val_caps = train_test_split(
             train_val_imgs, train_val_caps, test_size=0.176, random_state=42
         )
