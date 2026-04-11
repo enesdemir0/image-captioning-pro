@@ -6,22 +6,22 @@ dataset:
   image_prefix: "COCO_train2014_"
   vocab_size: 10000
   max_caption_length: 25
-  subset_size: 0       # 3X MORE DATA THAN BEFORE
+  subset_size: 50000  # Must match the 'S50000' in the name
 
 model:
   encoder_name: "Xception"
   decoder_type: "LSTM"
   num_layers: 3
-  units: 512                # BACK TO STABLE UNITS
+  units: 512
   embedding_dim: 256
-  attention_type: "scaled_dot" # THE BEST MATH
+  attention_type: "dot" # Change this to 'dot' for this specific test!
 
 training:
-  epochs: 50                # FULL DEPTH
-  batch_size: 256           # A100 MAX SPEED
+  epochs: 50
+  batch_size: 256
   learning_rate: 0.0005
   use_teacher_forcing: True 
-  optimizer_type: "adam"    # STABLE OPTIMIZER
+  optimizer_type: "adam"
   checkpoint_path: "/content/drive/MyDrive/Image_Captioning_Models/checkpoints/"
 
 mlflow:
