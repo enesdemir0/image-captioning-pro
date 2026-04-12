@@ -1,13 +1,10 @@
 import re
 import tensorflow as tf
+import numpy as np
 
 class TextProcessor:
-    """
-    Handles cleaning, tokenizing, and padding of captions.
-    """
     def __init__(self, config):
         self.vocab_size = config['dataset']['vocab_size']
-        # Ensure max_length is an integer
         self.max_length = int(config['dataset']['max_caption_length'])
         
         self.tokenizer = tf.keras.preprocessing.text.Tokenizer(
@@ -18,24 +15,32 @@ class TextProcessor:
         )
 
     def clean_caption(self, caption):
-        """Standardizes the text: lowercase, removes punctuation, adds tokens."""
         caption = str(caption).lower()
-        caption = re.sub(r'[^\w\s]', '', caption) # Remove punctuation
-        caption = f"<start> {caption} <end>"     # Add boundary tokens
-        caption = re.sub(r'\s+', ' ', caption).strip() # Remove extra spaces
+        caption = re.sub(r'[^\w\s]', '', caption)
+        caption = f"<start> {caption} <end>"
+        caption = re.sub(r'\s+', ' ', caption).strip()
         return caption
 
     def fit_on_texts(self, captions):
-        """Creates the word-to-index dictionary."""
-        print(f"🔡 Fitting tokenizer on {len(captions)} captions...")
+        """Builds the word index. Returns True if successful."""
+        if not captions:
+            return False
         self.tokenizer.fit_on_texts(captions)
-        # Manually ensure padding token is at index 0
         self.tokenizer.word_index['<pad>'] = 0
         self.tokenizer.index_word[0] = '<pad>'
+        return True
 
     def tokenize_and_pad(self, captions):
-        """Converts text captions to padded integer sequences."""
+        """Converts text to padded sequences safely."""
+        # Ensure all captions are strings
+        captions = [str(c) for c in captions]
         sequences = self.tokenizer.texts_to_sequences(captions)
+        
+        # If tokenizer isn't fitted, sequences will be empty lists.
+        # We ensure it returns a valid numpy array of zeros in that case.
         return tf.keras.preprocessing.sequence.pad_sequences(
-            sequences, maxlen=self.max_length, padding='post', dtype='int32'
+            sequences, 
+            maxlen=self.max_length, 
+            padding='post', 
+            dtype='int32'
         )

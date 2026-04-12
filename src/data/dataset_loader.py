@@ -13,6 +13,7 @@ class DataLoader:
         self.image_dir = config['dataset']['image_dir']
         self.caption_file = config['dataset']['caption_file']
         self.image_prefix = config['dataset'].get('image_prefix', "")
+        self._tokenizer_fitted = False
 
     def load_annotations(self):
         with open(self.caption_file, 'r') as f:
@@ -28,7 +29,6 @@ class DataLoader:
         for ann in anns:
             img_name = f"{self.image_prefix}{str(ann['image_id']).zfill(12)}.jpg"
             full_path = os.path.join(self.image_dir, img_name)
-            
             if os.path.exists(full_path):
                 caption = self.text_processor.clean_caption(ann['caption'])
                 all_img_paths.append(full_path)
@@ -46,7 +46,13 @@ class DataLoader:
         return (train_imgs, train_caps), (val_imgs, val_caps), (test_imgs, test_caps)
 
     def get_dataset(self, img_paths, captions, batch_size=64, is_training=True):
-        # Convert text to sequences using the ALREADY FITTED tokenizer
+        # --- SMART FIT ---
+        # If this is the training set and we haven't fitted yet, do it now!
+        if is_training and not self._tokenizer_fitted:
+            print("🔡 Auto-fitting tokenizer on training data...")
+            self.text_processor.fit_on_texts(captions)
+            self._tokenizer_fitted = True
+        
         cap_vector = self.text_processor.tokenize_and_pad(captions)
         
         dataset = tf.data.Dataset.from_tensor_slices((img_paths, cap_vector))
