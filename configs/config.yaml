@@ -17,7 +17,7 @@ model:
   attention_type: "dot" # Change this to 'dot' for this specific test!
 
 training:
-  epochs: 50
+  epochs: 10
   batch_size: 256
   learning_rate: 0.0005
   use_teacher_forcing: True 

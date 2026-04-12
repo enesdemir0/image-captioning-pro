@@ -1,46 +1,114 @@
-import re
+import os
+import json
 import tensorflow as tf
+import mlflow
+import dagshub
+from mlflow.tracking import MlflowClient
+from src.utils.config_loader import load_config
+from src.data.dataset_loader import DataLoader
+from src.models.encoder import CNN_Encoder
+from src.models.decoder import RNN_Decoder
+from src.training.trainer import CaptionTrainer
 
-class TextProcessor:
-    """
-    Handles cleaning, tokenizing, and padding of captions.
-    Optimized for GPU masking and professional NLP workflows.
-    """
-    def __init__(self, config):
-        self.vocab_size = config['dataset']['vocab_size']
-        self.max_length = config['dataset']['max_caption_length']
+def main():
+    config = load_config()
+    
+    # --- YOUR ORIGINAL METADATA NAMING ---
+    enc, dec = config['model']['encoder_name'], config['model']['decoder_type']
+    layers, units = config['model']['num_layers'], config['model']['units']
+    subset, epochs = config['dataset']['subset_size'], config['training']['epochs']
+    attn = config['model'].get('attention_type', 'None')
+    opt = "GWO" if config['training'].get('optimizer_type') == "greywolf" else "Adam"
+    tf_val = "TF" if config['training']['use_teacher_forcing'] else "Base"
+
+    model_id = f"ENC_{enc}_DEC_{dec}_L{layers}_U{units}_S{subset}_E{epochs}_{tf_val}_{attn}_{opt}"
+    
+    # YOUR ORIGINAL DagsHub & MLflow Logic
+    dagshub.init(repo_owner=config['mlflow']['repo_owner'], repo_name=config['mlflow']['repo_name'], mlflow=True)
+    mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
+    
+    client = MlflowClient()
+    exp = client.get_experiment_by_name(model_id)
+    if exp and exp.lifecycle_stage == 'deleted': client.restore_experiment(exp.experiment_id)
+    mlflow.set_experiment(model_id)
+
+    # 1. Data Pipeline
+    loader = DataLoader(config)
+    img_paths, captions = loader.load_annotations()
+    (tr_i, tr_c), (vl_i, vl_c), _ = loader.split_data(img_paths, captions)
+    
+    # --- THE CRITICAL ADDITION: Fits tokenizer before usage ---
+    print("🔡 Fitting tokenizer on training captions...")
+    loader.text_processor.fit_on_texts(tr_c)
+    
+    train_ds = loader.get_dataset(tr_i, tr_c, batch_size=config['training']['batch_size'], is_training=True)
+    val_ds = loader.get_dataset(vl_i, vl_c, batch_size=config['training']['batch_size'], is_training=False)
+
+    # 2. Model Initialization
+    encoder, decoder = CNN_Encoder(config), RNN_Decoder(config)
+    trainer = CaptionTrainer(encoder, decoder, loader.text_processor, config)
+    
+    # 3. Build Models (Dry run for shapes)
+    encoder(tf.zeros((1, 299, 299, 3)))
+    num_f = 100 if enc == "Xception" else (49 if enc == "VGG16" else 64)
+    decoder(tf.zeros((1, 1)), tf.zeros((1, num_f, units)), decoder.init_decoder_state(tf.zeros((1, num_f, units))))
+
+    # 4. YOUR ORIGINAL Checkpoint Logic
+    ckpt_dir = config['training']['checkpoint_path']
+    os.makedirs(ckpt_dir, exist_ok=True)
+    enc_path = os.path.join(ckpt_dir, f"{model_id}_enc.weights.h5")
+    dec_path = os.path.join(ckpt_dir, f"{model_id}_dec.weights.h5")
+    meta_path = os.path.join(ckpt_dir, f"{model_id}_meta.json")
+
+    start_epoch = 0
+    if os.path.exists(enc_path) and os.path.exists(meta_path):
+        with open(meta_path, 'r') as f: start_epoch = json.load(f)['last_completed_epoch']
+        if start_epoch < epochs:
+            print(f"🔄 Resuming from Epoch {start_epoch}...")
+            encoder.load_weights(enc_path)
+            decoder.load_weights(dec_path)
+        else:
+            print("✨ Model already fully trained.")
+            return
+
+    # 5. YOUR ORIGINAL Training Loop
+    with mlflow.start_run(run_name="Training_Session"):
+        mlflow.log_params(config['model'])
+        mlflow.log_params(config['training'])
         
-        # We exclude < and > from filters so our <start> and <end> tags stay safe!
-        self.tokenizer = tf.keras.preprocessing.text.Tokenizer(
-            num_words=self.vocab_size,
-            filters='!"#$%&()*+.,-/:;=?@[\]^_`{|}~ ', 
-            lower=True,
-            oov_token="<unk>"
-        )
+        # Calculate steps per epoch based on data size
+        steps_per_epoch = len(tr_i) // config['training']['batch_size']
+        val_steps = len(vl_i) // config['training']['batch_size']
 
-    def clean_caption(self, caption):
-        """Standardizes text: lowercase, removes punctuation, adds boundary tokens."""
-        caption = caption.lower()
-        # Remove punctuation except for spaces
-        caption = re.sub(r'[^\w\s]', '', caption)
-        # Add boundary tokens AFTER cleaning to ensure they stay intact
-        caption = f"<start> {caption} <end>"
-        # Remove extra whitespace
-        caption = re.sub(r'\s+', ' ', caption).strip()
-        return caption
+        for epoch in range(start_epoch, epochs):
+            if config['training'].get('optimizer_type') == "greywolf":
+                current_lr = trainer.update_metaheuristic_lr(epoch, epochs)
+                mlflow.log_metric("learning_rate", current_lr, step=epoch)
 
-    def fit_on_texts(self, captions):
-        """Creates the word-to-index dictionary."""
-        self.tokenizer.fit_on_texts(captions)
-        # Keras reserves 0 for padding automatically. 
-        # We don't need to force it, but we ensure our code knows 0 = <pad>
-        self.tokenizer.word_index['<pad>'] = 0
-        self.tokenizer.index_word[0] = '<pad>'
+            # --- Training Phase ---
+            t_l = 0
+            for batch, (img, tgt) in enumerate(train_ds.take(steps_per_epoch)):
+                t_l += trainer.train_step(img, tgt)
+                if batch % 100 == 0: print(f"Epoch {epoch+1} Batch {batch} Loss {t_l/(batch+1):.4f}")
+            
+            # --- Validation Phase ---
+            v_l = 0
+            for v_batch, (v_img, v_tgt) in enumerate(val_ds.take(val_steps)):
+                v_l += trainer.test_step(v_img, v_tgt)
+            
+            # YOUR ORIGINAL Metrics Logging
+            train_loss = (t_l / steps_per_epoch).numpy()
+            val_loss = (v_l / val_steps).numpy()
+            mlflow.log_metrics({"train_loss": train_loss, "val_loss": val_loss}, step=epoch)
+            print(f"⭐ Epoch {epoch+1} COMPLETED | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
 
-    def tokenize_and_pad(self, captions):
-        """Converts text captions to padded integer sequences for the Decoder."""
-        sequences = self.tokenizer.texts_to_sequences(captions)
-        # 'post' padding is industry standard for Encoder-Decoder Attention models
-        return tf.keras.preprocessing.sequence.pad_sequences(
-            sequences, maxlen=self.max_length, padding='post'
-        )
+            # YOUR ORIGINAL Save Logic
+            if (epoch + 1) % 5 == 0 or (epoch + 1) == epochs:
+                encoder.save_weights(enc_path)
+                decoder.save_weights(dec_path)
+                with open(meta_path, 'w') as f: 
+                    json.dump({'last_completed_epoch': epoch+1}, f)
+                print(f"💾 Checkpoint saved at epoch {epoch+1}")
+
+if __name__ == "__main__":
+    main()
