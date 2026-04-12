@@ -41,8 +41,10 @@ def plot_attention_grid(image, result, attention_plot, sample_idx, model_id):
         ax = fig.add_subplot(rows, cols, i + 1)
         ax.set_title(f"Focus: {words[i]}", fontsize=16, fontweight='bold')
         ax.imshow(image); ax.imshow(att_map, cmap='jet', alpha=0.45); ax.axis('off')
-    path = f"results/samples/{model_id}_Heatmap_{sample_idx}.png"
+    
+    # --- SAFETY FIX: Create folder before saving ---
     os.makedirs("results/samples", exist_ok=True)
+    path = f"results/samples/{model_id}_Heatmap_{sample_idx}.png"
     plt.savefig(path, bbox_inches='tight', dpi=150); plt.close()
     return path
 
@@ -70,38 +72,47 @@ def main():
     num_f = 100 if enc == "Xception" else 64
     decoder(tf.zeros((1, 1)), tf.zeros((1, num_f, units)), decoder.init_decoder_state(tf.zeros((1, num_f, units))))
 
-    # --- SMART SEARCH: Check Local FIRST, then Drive ---
     drive_path = config['training']['checkpoint_path']
     local_path = "./checkpoints/"
-    e_path = os.path.join(local_path, f"{model_id}_encoder.weights.h5")
-    d_path = os.path.join(local_path, f"{model_id}_decoder.weights.h5")
+    e_path = os.path.join(local_path, f"{model_id}_enc.weights.h5") # Fixed suffix to match your train.py
+    d_path = os.path.join(local_path, f"{model_id}_dec.weights.h5")
 
     if not os.path.exists(e_path):
-        print("ℹ️ Local weights not found, checking Drive...")
-        e_path = os.path.join(drive_path, f"{model_id}_encoder.weights.h5")
-        d_path = os.path.join(drive_path, f"{model_id}_decoder.weights.h5")
+        e_path = os.path.join(drive_path, f"{model_id}_enc.weights.h5")
+        d_path = os.path.join(drive_path, f"{model_id}_dec.weights.h5")
 
     if os.path.exists(e_path):
         print(f"✅ Loading: {e_path}")
         encoder.load_weights(e_path); decoder.load_weights(d_path)
     else:
-        print(f"❌ ERROR: Weights not found in local session or Drive!"); return
+        print(f"❌ ERROR: Weights not found!"); return
 
     b1_l, b2_l, b3_l, b4_l, met_l, rou_l = [], [], [], [], [], []
+    
+    # --- SAFETY FIX: Create folder before run ---
+    os.makedirs("results/samples", exist_ok=True)
+
     with mlflow.start_run(run_name="Final_Test_Set_Evaluation"):
         for i in range(len(test_i)):
             img_tensor, _ = loader.image_processor.preprocess_image(test_i[i])
             pred, attn_plot = generate_caption_smart(tf.expand_dims(img_tensor, 0), encoder, decoder, loader.text_processor, config)
             (b1, b2, b3, b4), m, r = calculate_all_metrics(test_c[i], pred)
             b1_l.append(b1); b2_l.append(b2); b3_l.append(b3); b4_l.append(b4); met_l.append(m); rou_l.append(r)
+            
             if i < 10:
                 display_img = np.clip((img_tensor.numpy() + 1.0) / 2.0, 0, 1)
                 plt.figure(figsize=(10, 8)); plt.imshow(display_img)
                 plt.title(f"REAL: {test_c[i]}\nPRED: {pred}\nB4: {b4:.4f}", fontsize=10); plt.axis('off')
-                path_std = f"results/samples/Sample_{i}_Result.png"; plt.savefig(path_std); plt.close()
+                
+                path_std = f"results/samples/Sample_{i}_Result.png"
+                plt.savefig(path_std); plt.close()
                 mlflow.log_artifact(path_std)
-                if attn != 'None': mlflow.log_artifact(plot_attention_grid(display_img, pred, attn_plot, i, model_id))
-            if i % 100 == 0: print(f"📊 Progress: {i}/{len(test_i)}...")
+                
+                if attn != 'None': 
+                    mlflow.log_artifact(plot_attention_grid(display_img, pred, attn_plot, i, model_id))
+            
+            if i % 50 == 0: print(f"📊 Progress: {i}/{len(test_i)}...")
+            
         summary = {"test_bleu4": np.mean(b4_l), "test_meteor": np.mean(met_l), "test_rougeL": np.mean(rou_l)}
         mlflow.log_metrics(summary)
         print(f"📊 FINAL RESULTS: BLEU-4: {summary['test_bleu4']:.4f}")
