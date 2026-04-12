@@ -6,7 +6,7 @@ dataset:
   image_prefix: "COCO_train2014_"
   vocab_size: 10000
   max_caption_length: 25
-  subset_size: 50000  # Must match the 'S50000' in the name
+  subset_size: 500  # Must match the 'S50000' in the name
 
 model:
   encoder_name: "Xception"
