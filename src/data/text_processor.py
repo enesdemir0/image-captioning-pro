@@ -1,6 +1,7 @@
 import re
 import tensorflow as tf
 import numpy as np
+import json
 
 class TextProcessor:
     def __init__(self, config):
@@ -44,3 +45,16 @@ class TextProcessor:
             padding='post', 
             dtype='int32'
         )
+
+    # --- ADDED: TOKENIZER PERSISTENCE ---
+    def save_tokenizer(self, path):
+        tokenizer_json = self.tokenizer.to_json()
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(tokenizer_json)
+        print(f"💾 Tokenizer saved to {path}")
+
+    def load_tokenizer(self, path):
+        with open(path, 'r', encoding='utf-8') as f:
+            tokenizer_json = f.read()
+            self.tokenizer = tf.keras.preprocessing.text.tokenizer_from_json(tokenizer_json)
+        print(f"📖 Tokenizer loaded from {path}")

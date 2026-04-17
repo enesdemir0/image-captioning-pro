@@ -57,14 +57,13 @@ def main():
     os.makedirs(drive_ckpt_dir, exist_ok=True)
     os.makedirs(local_ckpt_dir, exist_ok=True)
 
-    # Paths for Drive (Safety)
-    enc_path_drive = os.path.join(drive_ckpt_dir, f"{model_id}_encoder.weights.h5")
-    dec_path_drive = os.path.join(drive_ckpt_dir, f"{model_id}_decoder.weights.h5")
-    # Paths for Local Session (Immediate Access)
-    enc_path_local = os.path.join(local_ckpt_dir, f"{model_id}_encoder.weights.h5")
-    dec_path_local = os.path.join(local_ckpt_dir, f"{model_id}_decoder.weights.h5")
+    enc_path_drive = os.path.join(drive_ckpt_dir, f"{model_id}_enc.weights.h5")
+    dec_path_drive = os.path.join(drive_ckpt_dir, f"{model_id}_dec.weights.h5")
+    enc_path_local = os.path.join(local_ckpt_dir, f"{model_id}_enc.weights.h5")
+    dec_path_local = os.path.join(local_ckpt_dir, f"{model_id}_dec.weights.h5")
     
     meta_path = os.path.join(drive_ckpt_dir, f"{model_id}_meta.json")
+    tokenizer_path = os.path.join(drive_ckpt_dir, f"{model_id}_tokenizer.json")
 
     start_epoch = 0
     if os.path.exists(enc_path_drive) and os.path.exists(meta_path):
@@ -73,6 +72,9 @@ def main():
             print(f"🔄 Resuming from Epoch {start_epoch}...")
             encoder.load_weights(enc_path_drive); decoder.load_weights(dec_path_drive)
         else:
+            # SAFETY: Save tokenizer for already trained models if missing
+            if not os.path.exists(tokenizer_path):
+                loader.text_processor.save_tokenizer(tokenizer_path)
             print("✨ Model already fully trained."); return
 
     # Calculate steps
@@ -104,6 +106,8 @@ def main():
             if (epoch + 1) % 5 == 0 or (epoch + 1) == epochs:
                 encoder.save_weights(enc_path_drive); decoder.save_weights(dec_path_drive)
                 encoder.save_weights(enc_path_local); decoder.save_weights(dec_path_local)
+                # SAVE TOKENIZER
+                loader.text_processor.save_tokenizer(tokenizer_path)
                 with open(meta_path, 'w') as f: json.dump({'last_completed_epoch': epoch+1}, f)
                 print(f"💾 Checkpoint saved locally and to Drive.")
 
