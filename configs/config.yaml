@@ -6,7 +6,7 @@ dataset:
   image_prefix: "COCO_train2014_"
   vocab_size: 10000
   max_caption_length: 25
-  subset_size: 500  # Must match the 'S50000' in the name
+  subset_size: 50000
 
 model:
   encoder_name: "Xception"
@@ -14,14 +14,14 @@ model:
   num_layers: 3
   units: 512
   embedding_dim: 256
-  attention_type: "dot" # Change this to 'dot' for this specific test!
+  attention_type: "scaled_dot"
 
 training:
-  epochs: 10
-  batch_size: 256
-  learning_rate: 0.0005
+  epochs: 50                 # Optimized for your remaining units
+  batch_size: 256            # Safer for 3-layers on L4
+  learning_rate: 0.0004
   use_teacher_forcing: True 
-  optimizer_type: "adam"
+  optimizer_type: "greywolf" # Metaheuristic winner
   checkpoint_path: "/content/drive/MyDrive/Image_Captioning_Models/checkpoints/"
 
 mlflow:
