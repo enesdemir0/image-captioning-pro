@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 from src.data.text_processor import TextProcessor
 from src.data.image_processor import ImageProcessor
 
+
 class DataLoader:
     def __init__(self, config):
         self.config = config
@@ -18,10 +19,10 @@ class DataLoader:
     def load_annotations(self):
         with open(self.caption_file, 'r') as f:
             annotations = json.load(f)
-        
+
         all_captions, all_img_paths = [], []
         subset_size = self.config['dataset'].get('subset_size', 0)
-        
+
         anns = annotations['annotations']
         if subset_size > 0:
             anns = anns[:subset_size]
@@ -46,21 +47,19 @@ class DataLoader:
         return (train_imgs, train_caps), (val_imgs, val_caps), (test_imgs, test_caps)
 
     def get_dataset(self, img_paths, captions, batch_size=64, is_training=True):
-        # --- SMART FIT ---
-        # If this is the training set and we haven't fitted yet, do it now!
         if is_training and not self._tokenizer_fitted:
-            print("🔡 Auto-fitting tokenizer on training data...")
+            print("Auto-fitting tokenizer on training data...")
             self.text_processor.fit_on_texts(captions)
             self._tokenizer_fitted = True
-        
+
         cap_vector = self.text_processor.tokenize_and_pad(captions)
-        
+
         dataset = tf.data.Dataset.from_tensor_slices((img_paths, cap_vector))
         dataset = dataset.map(
             lambda i, c: (self.image_processor.preprocess_image(i)[0], c),
             num_parallel_calls=tf.data.AUTOTUNE
         )
-        
+
         if is_training:
             dataset = dataset.shuffle(1000).repeat()
         return dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)

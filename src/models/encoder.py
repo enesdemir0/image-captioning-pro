@@ -1,52 +1,45 @@
 import tensorflow as tf
 
+
 class CNN_Encoder(tf.keras.Model):
     """
-    Encoder that maps CNN features directly to the Decoder's hidden state size (units).
-    This ensures the Attention mechanism math is always aligned.
+    Transfer-learning encoder. Extracts spatial feature maps from a frozen CNN
+    backbone and projects them to the decoder's hidden-state dimension (units),
+    so attention math is always dimension-aligned.
     """
+
     def __init__(self, config):
         super(CNN_Encoder, self).__init__()
         self.encoder_name = config['model']['encoder_name']
-        self.units = config['model']['units'] 
+        self.units = config['model']['units']
 
-        # Dictionary-based loading makes it easier to support more models in the future
-        self.model_map = {
+        model_map = {
             "InceptionV3": tf.keras.applications.InceptionV3,
-            "VGG16": tf.keras.applications.VGG16,
-            "Xception": tf.keras.applications.Xception
+            "VGG16":       tf.keras.applications.VGG16,
+            "Xception":    tf.keras.applications.Xception,
+            "ResNet50":    tf.keras.applications.ResNet50,
         }
 
-        if self.encoder_name not in self.model_map:
-            print(f"⚠️ Warning: {self.encoder_name} not in map, defaulting to Xception")
-            base_model_builder = tf.keras.applications.Xception
+        if self.encoder_name not in model_map:
+            print(f"Warning: '{self.encoder_name}' not supported — defaulting to Xception.")
+            builder = tf.keras.applications.Xception
         else:
-            base_model_builder = self.model_map[self.encoder_name]
+            builder = model_map[self.encoder_name]
 
-        # Load the base model without the classification head
-        base_model = base_model_builder(include_top=False, weights='imagenet')
-
-        # We take the output of the last convolutional layer
-        self.feature_extractor = tf.keras.Model(inputs=base_model.input, outputs=base_model.output)
+        base = builder(include_top=False, weights='imagenet')
+        self.feature_extractor = tf.keras.Model(inputs=base.input, outputs=base.output)
         self.feature_extractor.trainable = False
 
-        # The Bridge Layer: Maps CNN feature depth to the Decoder's 'units' (e.g., 512)
-        self.fc = tf.keras.layers.Dense(self.units)
+        # Bridge layer: maps CNN depth → decoder units (e.g., 2048 → 512)
+        self.fc = tf.keras.layers.Dense(self.units, activation='relu')
 
     def call(self, x):
-        # 1. Extract features from CNN
-        # Shape: (batch, grid_h, grid_w, channels)
+        # (batch, H, W, C)
         features = self.feature_extractor(x)
-        
-        # 2. Reshape to (batch, grid_size, channels)
-        # For Xception, (10, 10, 2048) becomes (100, 2048)
-        features = tf.reshape(features, (features.shape[0], -1, features.shape[3]))
-        
-        # 3. Pass through Dense layer to match Decoder Units
-        # Shape: (batch, 100, 512)
-        features = self.fc(features)
-        
-        # 4. Activation
-        features = tf.nn.relu(features)
-        
-        return features
+
+        # Dynamic reshape — safe for any batch size, including None at trace time
+        batch = tf.shape(features)[0]
+        c = tf.shape(features)[3]
+        features = tf.reshape(features, (batch, -1, c))   # (batch, H*W, C)
+
+        return self.fc(features)                           # (batch, H*W, units)
