@@ -6,7 +6,7 @@ dataset:
   image_prefix: "COCO_train2014_"
   vocab_size: 10000
   max_caption_length: 25
-  subset_size: 50000
+  subset_size: 0  # Set to 0 to use the full dataset,
 
 model:
   encoder_name: "Xception"
