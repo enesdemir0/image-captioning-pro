@@ -134,7 +134,6 @@ def calculate_corpus_metrics(references, hypotheses):
     scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
 
     for r, h in zip(references, hypotheses):
-        # NLTK meteor expects lists of tokens
         meteor_scores.append(meteor_score([r.split()], h.split()))
         rouge_scores.append(scorer.score(r, h)['rougeL'].fmeasure)
 
@@ -162,6 +161,22 @@ def main():
     loader = DataLoader(config)
     img_paths, captions = loader.load_annotations()
     (tr_i, tr_c), _, (test_imgs, test_caps) = loader.split_data(img_paths, captions)
+    
+    # --- SPEED FIX: Scientific Random Sampling (Take 5,000 samples) ---
+    total_available = len(test_imgs)
+    eval_limit = min(300, total_available)
+    
+    indices = np.arange(total_available)
+    np.random.seed(42) # Fixed seed for reproducibility
+    np.random.shuffle(indices)
+    selected_indices = indices[:eval_limit]
+    
+    # Filter the test set down to 5,000
+    test_imgs_sampled = [test_imgs[i] for i in selected_indices]
+    test_caps_sampled = [test_caps[i] for i in selected_indices]
+    
+    print(f"🧪 Scientific Sampling: Evaluating on {eval_limit} random unseen samples.")
+
     loader.text_processor.load_tokenizer(tokenizer_path)
 
     encoder, decoder, image_proc = CNN_Encoder(config), RNN_Decoder(config), ImageProcessor(config)
@@ -174,8 +189,8 @@ def main():
     references, hypotheses = [], []
     heatmap_idx = 0
 
-    with mlflow.start_run(run_name="Final_Evaluation"):
-        for i, (img_path, ref_cap) in enumerate(zip(test_imgs, test_caps)):
+    with mlflow.start_run(run_name="Scientific_Test_Evaluation"):
+        for i, (img_path, ref_cap) in enumerate(zip(test_imgs_sampled, test_caps_sampled)):
             words, attn_weights, orig_image = generate_caption(img_path, encoder, decoder, loader.text_processor, image_proc, config)
             ref_clean = ref_cap.replace('<start>', '').replace('<end>', '').strip()
             pred_str = ' '.join(words)
@@ -187,14 +202,16 @@ def main():
                 generate_attention_heatmap(orig_image, attn_weights, words, heatmap_path)
                 mlflow.log_artifact(heatmap_path)
                 heatmap_idx += 1
-            if i % 100 == 0: print(f"  Processed {i}/{len(test_imgs)}")
+            
+            if i % 100 == 0: 
+                print(f"  Processed {i}/{eval_limit}")
 
         # --- CALCULATE ALL 6 METRICS ---
         b1, b2, b3, b4, m, r = calculate_corpus_metrics(references, hypotheses)
         
         metrics_dict = {"BLEU-1": b1, "BLEU-2": b2, "BLEU-3": b3, "BLEU-4": b4, "METEOR": m, "ROUGE-L": r}
         mlflow.log_metrics(metrics_dict)
-        print(f"\n📊 FINAL RESULTS:\n{json.dumps(metrics_dict, indent=2)}")
+        print(f"\n📊 FINAL RESULTS (5,000 SAMPLES):\n{json.dumps(metrics_dict, indent=2)}")
 
         with open(f"results/{model_id}_summary.json", 'w') as f:
             json.dump(metrics_dict, f, indent=2)
