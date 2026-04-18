@@ -89,9 +89,9 @@ def generate_caption(image_path, encoder, decoder, text_processor, image_process
         dec_input = tf.expand_dims([predicted_id], 0)
     return words, attn_weights_list, orig_image
 
-# ─── Attention Heatmap ────────────────────────────────────────────────────────
+# ─── Attention Heatmap (Updated to show Real Caption) ─────────────────────────
 
-def generate_attention_heatmap(orig_image, attn_weights_list, caption_words, output_path):
+def generate_attention_heatmap(orig_image, attn_weights_list, caption_words, real_caption, output_path):
     if not attn_weights_list: return
     attn_map = np.mean(np.stack(attn_weights_list, axis=0), axis=0).flatten()
     grid_size = int(np.sqrt(len(attn_map)))
@@ -110,10 +110,20 @@ def generate_attention_heatmap(orig_image, attn_weights_list, caption_words, out
     colored = plt.get_cmap('jet')(heatmap)[:, :, :3]
     overlay = np.clip(0.5 * (orig_image.astype(np.float32)/255.0) + 0.5 * colored, 0.0, 1.0)
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-    axes[0].imshow(orig_image); axes[0].axis('off'); axes[0].set_title("Original")
-    axes[1].imshow(overlay); axes[1].axis('off'); axes[1].set_title(f"Focus: {' '.join(caption_words)}")
+    fig, axes = plt.subplots(1, 2, figsize=(15, 7))
+    # Subplot 0: Original + Real
+    axes[0].imshow(orig_image)
+    axes[0].set_title(f"Original Image\nREAL: {real_caption}", fontsize=10, pad=10, fontweight='bold')
+    axes[0].axis('off')
+
+    # Subplot 1: Heatmap + Prediction
+    axes[1].imshow(overlay)
+    axes[1].set_title(f"Attention Map\nPRED: {' '.join(caption_words)}", fontsize=10, pad=10, fontweight='bold')
+    axes[1].axis('off')
+
+    plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight'); plt.close(fig)
+    print(f"  Heatmap saved → {output_path}")
 
 # ─── Advanced Metrics ─────────────────────────────────────────────────────────
 
@@ -162,16 +172,15 @@ def main():
     img_paths, captions = loader.load_annotations()
     (tr_i, tr_c), _, (test_imgs, test_caps) = loader.split_data(img_paths, captions)
     
-    # --- SPEED FIX: Scientific Random Sampling (Take 5,000 samples) ---
+    # --- SPEED FIX: Scientific Random Sampling (300 samples) ---
     total_available = len(test_imgs)
     eval_limit = min(300, total_available)
     
     indices = np.arange(total_available)
-    np.random.seed(42) # Fixed seed for reproducibility
+    np.random.seed(42)
     np.random.shuffle(indices)
     selected_indices = indices[:eval_limit]
     
-    # Filter the test set down to 5,000
     test_imgs_sampled = [test_imgs[i] for i in selected_indices]
     test_caps_sampled = [test_caps[i] for i in selected_indices]
     
@@ -199,11 +208,12 @@ def main():
 
             if heatmap_idx < 5 and attn_weights:
                 heatmap_path = f"results/heatmap_{i}.png"
-                generate_attention_heatmap(orig_image, attn_weights, words, heatmap_path)
+                # Pass ref_clean to show the REAL caption on the plot
+                generate_attention_heatmap(orig_image, attn_weights, words, ref_clean, heatmap_path)
                 mlflow.log_artifact(heatmap_path)
                 heatmap_idx += 1
             
-            if i % 100 == 0: 
+            if i % 50 == 0: 
                 print(f"  Processed {i}/{eval_limit}")
 
         # --- CALCULATE ALL 6 METRICS ---
@@ -211,7 +221,7 @@ def main():
         
         metrics_dict = {"BLEU-1": b1, "BLEU-2": b2, "BLEU-3": b3, "BLEU-4": b4, "METEOR": m, "ROUGE-L": r}
         mlflow.log_metrics(metrics_dict)
-        print(f"\n📊 FINAL RESULTS (5,000 SAMPLES):\n{json.dumps(metrics_dict, indent=2)}")
+        print(f"\n📊 FINAL RESULTS ({eval_limit} SAMPLES):\n{json.dumps(metrics_dict, indent=2)}")
 
         with open(f"results/{model_id}_summary.json", 'w') as f:
             json.dump(metrics_dict, f, indent=2)
