@@ -1,10 +1,10 @@
 import os
 import subprocess
 import sys
+import yaml
 
 def run_command(cmd):
     print(f"\n🏃 Executing: {cmd}")
-    # Using subprocess.run ensures the script waits for the command to finish
     subprocess.run(cmd, shell=True, check=True)
 
 def main():
@@ -17,7 +17,6 @@ def main():
     print("📥 Fetching MS-COCO annotations...")
     run_command("python scripts/download_data.py")
 
-    # The images unzipping logic
     ZIP_PATH = "/content/drive/MyDrive/coco_train2014.zip"
     if not os.path.exists("data/train2014"):
         print("📦 Extracting 13GB dataset to local disk for speed...")
@@ -30,20 +29,33 @@ def main():
     # 3. DAGSHUB / MLFLOW AUTH
     print("🔐 Initializing DagsHub...")
     import dagshub
-    # This will trigger the link if not already authorized
     dagshub.init(repo_owner="enesdemir0", repo_name="image-captioning-pro", mlflow=True)
 
     # 4. EXECUTION PIPELINE
-    # Set PYTHONPATH so 'src' is visible to the sub-scripts
     os.environ['PYTHONPATH'] = os.getcwd()
 
-    print("\n🚀 STEP 1: STARTING TRAINING...")
-    run_command("python src/training/train.py")
+    # Read mode from config (default: cnn_rnn)
+    with open("configs/config.yaml") as f:
+        config = yaml.safe_load(f)
+    mode = config.get('mode', 'cnn_rnn')
 
-    print("\n🔥 STEP 2: STARTING EVALUATION & INTERPRETABILITY HEATMAPS...")
-    run_command("python scripts/evaluate.py")
+    if mode == "vit_gpt2":
+        print("\n🤖 MODE: ViT-GPT2 (Pre-trained) — skipping training step.")
+        run_command("pip install torch transformers -q")
 
-    print("\n✨ PIPELINE COMPLETE! View results on DagsHub and in results/samples/")
+        print("\n🔥 STARTING ViT-GPT2 EVALUATION...")
+        run_command("python scripts/evaluate_vit_gpt2.py")
+
+    else:
+        print("\n🚀 MODE: CNN+RNN (Custom Training)")
+
+        print("\n🚀 STEP 1: STARTING TRAINING...")
+        run_command("python src/training/train.py")
+
+        print("\n🔥 STEP 2: STARTING EVALUATION & INTERPRETABILITY HEATMAPS...")
+        run_command("python scripts/evaluate.py")
+
+    print("\n✨ PIPELINE COMPLETE! View results on DagsHub and in results/")
 
 if __name__ == "__main__":
     main()

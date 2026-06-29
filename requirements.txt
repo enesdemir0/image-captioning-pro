@@ -12,3 +12,6 @@ pytest
 nltk
 rouge-score
 scikit-learn
+torch
+transformers
+streamlit
