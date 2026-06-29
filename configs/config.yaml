@@ -1,7 +1,7 @@
 # ── Mode switch ──────────────────────────────────────────────────────────────
 # "cnn_rnn"  → trains your custom model then evaluates it
 # "vit_gpt2" → skips training, evaluates the pre-trained ViT-GPT2 model
-mode: "cnn_rnn"
+mode: "vit_gpt2"
 
 # ── ViT-GPT2 settings (only used when mode: "vit_gpt2") ─────────────────────
 vit_gpt2:
