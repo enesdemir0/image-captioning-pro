@@ -1,5 +1,6 @@
 import os
 import json
+import argparse
 import tensorflow as tf
 import mlflow
 import dagshub
@@ -16,7 +17,11 @@ _NUM_FEATURES = {"Xception": 100, "InceptionV3": 64, "VGG16": 49, "ResNet50": 49
 
 
 def main():
-    config = load_config()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/config.yaml", help="Path to config file")
+    args = parser.parse_args()
+
+    config = load_config(args.config)
 
     # ── Dynamic hyper-parameters ──────────────────────────────────────────────
     batch_size = config['training']['batch_size']

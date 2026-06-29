@@ -152,7 +152,12 @@ def calculate_corpus_metrics(references, hypotheses):
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    config = load_config()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/config.yaml")
+    args = parser.parse_args()
+
+    config = load_config(args.config)
     enc, dec = config['model']['encoder_name'], config['model']['decoder_type']
     layers, units = config['model']['num_layers'], config['model']['units']
     subset, epochs = config['dataset']['subset_size'], config['training']['epochs']
