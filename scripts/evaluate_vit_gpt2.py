@@ -6,6 +6,9 @@ import numpy as np
 import requests
 import mlflow
 import dagshub
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from PIL import Image
 from sklearn.model_selection import train_test_split
 from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
@@ -75,6 +78,27 @@ def build_test_pairs(config, n_eval):
     return [test_pairs[i] for i in idx]
 
 
+def save_caption_sample(image_pil: Image.Image, real_caption: str, pred_caption: str, output_path: str):
+    """Side-by-side figure: original image with REAL caption (left) and PRED caption (right).
+    Mirrors the layout of evaluate.py's attention heatmap figures so artifacts look consistent."""
+    img_arr = np.array(image_pil)
+
+    fig, axes = plt.subplots(1, 2, figsize=(15, 7))
+
+    axes[0].imshow(img_arr)
+    axes[0].set_title(f"Original Image\nREAL: {real_caption}", fontsize=10, pad=10, fontweight='bold')
+    axes[0].axis('off')
+
+    axes[1].imshow(img_arr)
+    axes[1].set_title(f"ViT-GPT2 Caption\nPRED: {pred_caption}", fontsize=10, pad=10, fontweight='bold')
+    axes[1].axis('off')
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Sample saved → {output_path}")
+
+
 def calculate_corpus_metrics(references, hypotheses):
     smoother = SmoothingFunction().method1
     refs_tok = [[r.split()] for r in references]
@@ -129,6 +153,7 @@ def main():
 
     os.makedirs("results", exist_ok=True)
     references, hypotheses = [], []
+    sample_idx = 0
 
     with mlflow.start_run(run_name="Scientific_Test_Evaluation"):
         mlflow.log_params({
@@ -151,6 +176,12 @@ def main():
             pred = captioner.generate_caption(image, max_len, n_beams, temp, top_k, top_p)
             references.append(ref_cap)
             hypotheses.append(pred)
+
+            if sample_idx < 5:
+                sample_path = f"results/heatmap_{i}.png"
+                save_caption_sample(image, ref_cap, pred, sample_path)
+                mlflow.log_artifact(sample_path)
+                sample_idx += 1
 
             if i % 50 == 0:
                 print(f"  [{i}/{len(test_pairs)}]  pred: {pred}")
