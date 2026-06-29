@@ -1,0 +1,29 @@
+dataset:
+  name: "MS-COCO-2014-SAMPLE"
+  image_dir: "data/sample/images"
+  caption_file: "data/sample/annotations/captions_sample.json"
+  image_prefix: "COCO_train2014_"
+  vocab_size: 500
+  max_caption_length: 25
+  subset_size: 0  # 0 = use all of sample (already tiny)
+
+model:
+  encoder_name: "Xception"
+  decoder_type: "LSTM"
+  num_layers: 1
+  units: 128
+  embedding_dim: 64
+  attention_type: "scaled_dot"
+
+training:
+  epochs: 3
+  batch_size: 4
+  learning_rate: 0.001
+  use_teacher_forcing: True
+  optimizer_type: "adam"
+  checkpoint_path: "./checkpoints/dev/"
+
+mlflow:
+  tracking_uri: "https://dagshub.com/enesdemir0/image-captioning-pro.mlflow"
+  repo_owner: "enesdemir0"
+  repo_name: "image-captioning-pro"

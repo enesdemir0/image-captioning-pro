@@ -7,12 +7,14 @@ venv/
 
 # Data and Models (Do NOT push these)
 image_captioning_pro.egg-info
-data
+data/train2014/
+data/annotations/
 *.npy
 *.h5
 *.pth
 *.pkl
 mlruns/
+checkpoints/
 
 # IDEs
 .vscode/
