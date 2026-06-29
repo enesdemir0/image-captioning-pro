@@ -19,6 +19,7 @@ dataset:
   image_dir: "data/train2014"
   caption_file: "data/annotations/captions_train2014.json"
   image_prefix: "COCO_train2014_"
+  zip_path: "/content/drive/MyDrive/coco_train2014.zip"   # ← update this to your Drive path
   vocab_size: 10000
   max_caption_length: 25
   subset_size: 0  # Set to 0 to use the full dataset,
