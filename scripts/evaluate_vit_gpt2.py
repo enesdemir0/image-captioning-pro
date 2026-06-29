@@ -130,7 +130,7 @@ def main():
     os.makedirs("results", exist_ok=True)
     references, hypotheses = [], []
 
-    with mlflow.start_run(run_name="ViTGPT2_Test_Evaluation"):
+    with mlflow.start_run(run_name="Scientific_Test_Evaluation"):
         mlflow.log_params({
             "model":        model_id,
             "max_length":   max_len,
@@ -160,16 +160,16 @@ def main():
             return
 
         b1, b2, b3, b4, m, r = calculate_corpus_metrics(references, hypotheses)
-        metrics = {
-            "BLEU-1": b1, "BLEU-2": b2, "BLEU-3": b3, "BLEU-4": b4,
-            "METEOR": m,  "ROUGE-L": r,
+        metrics_dict = {
+            "test_bleu1": b1, "test_bleu2": b2, "test_bleu3": b3, "test_bleu4": b4,
+            "test_meteor": m, "test_rougeL": r,
         }
-        mlflow.log_metrics(metrics)
-        print(f"\nFINAL RESULTS ({len(hypotheses)} samples):\n{json.dumps(metrics, indent=2)}")
+        mlflow.log_metrics(metrics_dict)
+        print(f"\n📊 FINAL RESULTS ({len(hypotheses)} samples):\n{json.dumps(metrics_dict, indent=2)}")
 
         summary_path = f"results/{experiment_name}_summary.json"
         with open(summary_path, 'w') as f:
-            json.dump(metrics, f, indent=2)
+            json.dump(metrics_dict, f, indent=2)
         mlflow.log_artifact(summary_path)
 
 

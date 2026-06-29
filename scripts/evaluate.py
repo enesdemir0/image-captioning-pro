@@ -219,7 +219,10 @@ def main():
         # --- CALCULATE ALL 6 METRICS ---
         b1, b2, b3, b4, m, r = calculate_corpus_metrics(references, hypotheses)
         
-        metrics_dict = {"BLEU-1": b1, "BLEU-2": b2, "BLEU-3": b3, "BLEU-4": b4, "METEOR": m, "ROUGE-L": r}
+        metrics_dict = {
+            "test_bleu1": b1, "test_bleu2": b2, "test_bleu3": b3, "test_bleu4": b4,
+            "test_meteor": m, "test_rougeL": r,
+        }
         mlflow.log_metrics(metrics_dict)
         print(f"\n📊 FINAL RESULTS ({eval_limit} SAMPLES):\n{json.dumps(metrics_dict, indent=2)}")
 
