@@ -8,8 +8,8 @@ dataset:
   test_split_path: "configs/test_split.json"
 
 model:
-  name: "minicpm"                     # llava | minicpm | qwen2_5_vl
-  hf_model_id: "openbmb/MiniCPM-V-2_6"
+  name: "qwen2_5_vl"                     # llava | minicpm | qwen2_5_vl
+  hf_model_id: "Qwen/Qwen2.5-VL-7B-Instruct"
   strategy: "zero_shot"                   # zero_shot | few_shot  ← appears in MLflow experiment name
   prompt: "Describe this image in one sentence."
   device: "cuda"
