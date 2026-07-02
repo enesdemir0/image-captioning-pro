@@ -83,6 +83,7 @@ def main():
             if i % 50 == 0:
                 print(f"  [{i}/{len(samples)}] PRED: {caption}")
 
+        vlm.unload()
         metrics = calculate_metrics(references, hypotheses)
         mlflow.log_metrics(metrics)
         print(f"\nResults:\n{json.dumps(metrics, indent=2)}")

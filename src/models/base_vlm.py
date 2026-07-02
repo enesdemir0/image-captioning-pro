@@ -23,6 +23,12 @@ class BaseVLM(ABC):
         """Download and initialise model + processor. Called once before the eval loop."""
         pass
 
+    def unload(self):
+        """Undo any process-wide side effects load() made (e.g. a pinned dependency
+        downgrade). Called once after the eval loop, before metrics are calculated.
+        Override only if load() needs to clean up after itself."""
+        pass
+
     # ── Strategy dispatch ─────────────────────────────────────────────────────
 
     def generate_caption(self, image_path: str) -> str:

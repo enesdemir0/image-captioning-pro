@@ -7,8 +7,19 @@ class MiniCPMModel(BaseVLM):
     """MiniCPM-V-8B — openbmb/MiniCPM-V-2_6"""
 
     def load(self):
+        import importlib.metadata
         import subprocess
         import sys
+
+        # src/utils/metrics.py imports bert_score at module load time, i.e.
+        # before load() ever runs — so bert_score's internal AutoModel/
+        # AutoConfig references get bound to whatever transformers version
+        # was installed when evaluate.py started. Remember it so unload()
+        # can restore it later; see unload() for why that matters.
+        self._original_pkg_versions = {
+            pkg: importlib.metadata.version(pkg)
+            for pkg in ("transformers", "tokenizers", "huggingface_hub")
+        }
 
         # MiniCPM-V-2_6's trust_remote_code model class predates several
         # transformers refactors (tied-weights handling, dtype kwarg rename)
@@ -83,6 +94,29 @@ class MiniCPMModel(BaseVLM):
         self.model = self.model.to(self.config['model'].get('device', 'cuda'))
         self.model.eval()
         print(f"MiniCPM-V loaded: {hf_id}")
+
+    def unload(self):
+        import subprocess
+        import sys
+
+        # Undo load()'s pinned downgrade now that all captions are generated.
+        # Without this, calculate_metrics() (which runs right after this in
+        # evaluate.py) crashes inside bert_score: bert_score.utils bound its
+        # AutoModel/AutoConfig to the *original* transformers version at
+        # import time, but by then transformers has been downgraded and
+        # sys.modules cleared, so bert_score's stale classes end up paired
+        # with submodules (e.g. configuration_roberta) that get freshly
+        # re-imported from the *downgraded* version's files on disk —
+        # producing version-mismatch errors like
+        # `RobertaConfig object has no attribute 'sub_configs'`. Reinstalling
+        # the exact original versions and clearing the cache again makes
+        # everything bert_score touches consistent with what it originally
+        # bound.
+        pins = [f"{pkg}=={version}" for pkg, version in self._original_pkg_versions.items()]
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", *pins], check=True)
+        for mod_name in list(sys.modules):
+            if mod_name.split(".")[0] in ("transformers", "tokenizers", "huggingface_hub"):
+                del sys.modules[mod_name]
 
     def _zero_shot(self, image_path: str) -> str:
         prompt_text = self.config['model'].get('prompt', 'Describe this image in one sentence.')
