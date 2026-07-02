@@ -1,3 +1,4 @@
+import torch
 from PIL import Image
 from src.models.base_vlm import BaseVLM
 
@@ -6,14 +7,22 @@ class MiniCPMModel(BaseVLM):
     """MiniCPM-V-8B — openbmb/MiniCPM-V-2_6"""
 
     def load(self):
-        from transformers import AutoModel, AutoTokenizer, BitsAndBytesConfig
+        from transformers import AutoModel, AutoTokenizer
 
         hf_id = self.config['model']['hf_model_id']
         self.tokenizer = AutoTokenizer.from_pretrained(hf_id, trust_remote_code=True)
 
-        load_kwargs = {"trust_remote_code": True, "device_map": "auto"}
-        if self.config['model'].get('load_in_8bit', True):
-            load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+        # NOTE: MiniCPM-V-2_6's trust_remote_code model class predates the
+        # `all_tied_weights_keys` API that recent transformers' bnb 8-bit
+        # quantizer uses to auto-detect skip modules, so requesting 8-bit
+        # here crashes with AttributeError during from_pretrained(). Load
+        # in fp16 instead — LLaVA/Qwen2.5-VL are unaffected since they're
+        # natively integrated rather than trust_remote_code.
+        load_kwargs = {
+            "trust_remote_code": True,
+            "device_map": "auto",
+            "torch_dtype": torch.float16,
+        }
 
         self.model = AutoModel.from_pretrained(hf_id, **load_kwargs)
         self.model.eval()

@@ -14,7 +14,7 @@ model:
   prompt: "Describe this image in one sentence."
   device: "cuda"
   max_new_tokens: 50
-  load_in_8bit: true
+  load_in_8bit: false                     # ignored for minicpm — see src/models/minicpm.py
 
 evaluation:
   num_samples: 300                        # change to e.g. 100 to run faster — always same first-N images
