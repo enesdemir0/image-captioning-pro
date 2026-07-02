@@ -13,18 +13,16 @@ class MiniCPMModel(BaseVLM):
         self.tokenizer = AutoTokenizer.from_pretrained(hf_id, trust_remote_code=True)
 
         # NOTE: MiniCPM-V-2_6's trust_remote_code model class predates the
-        # `all_tied_weights_keys` API that recent transformers' bnb 8-bit
-        # quantizer uses to auto-detect skip modules, so requesting 8-bit
-        # here crashes with AttributeError during from_pretrained(). Load
-        # in fp16 instead — LLaVA/Qwen2.5-VL are unaffected since they're
-        # natively integrated rather than trust_remote_code.
-        load_kwargs = {
-            "trust_remote_code": True,
-            "device_map": "auto",
-            "torch_dtype": torch.float16,
-        }
-
-        self.model = AutoModel.from_pretrained(hf_id, **load_kwargs)
+        # `all_tied_weights_keys` API that recent transformers uses both in
+        # the bnb 8-bit quantizer AND in accelerate's infer_auto_device_map
+        # (triggered by device_map="auto"), so either one crashes with
+        # AttributeError during from_pretrained(). Load plain and place it
+        # on the device manually instead — LLaVA/Qwen2.5-VL are unaffected
+        # since they're natively integrated rather than trust_remote_code.
+        self.model = AutoModel.from_pretrained(
+            hf_id, trust_remote_code=True, dtype=torch.float16
+        )
+        self.model = self.model.to(self.config['model'].get('device', 'cuda'))
         self.model.eval()
         print(f"MiniCPM-V loaded: {hf_id}")
 
