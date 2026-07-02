@@ -57,7 +57,8 @@ def test_metrics_returns_all_keys():
     refs = ["a dog is running in the park", "a cat is sitting on a mat"]
     hyps = ["dog runs park", "cat sits mat"]
     metrics = calculate_metrics(refs, hyps)
-    for key in ["BLEU-1", "BLEU-2", "BLEU-3", "BLEU-4", "METEOR", "ROUGE-L", "BERTScore-F1"]:
+    for key in ["test_bleu1", "test_bleu2", "test_bleu3", "test_bleu4",
+                "test_meteor", "test_rougeL", "test_bertscore_f1"]:
         assert key in metrics
         assert 0.0 <= metrics[key] <= 1.0
 
@@ -65,5 +66,5 @@ def test_metrics_returns_all_keys():
 def test_metrics_perfect_match():
     caption = "a dog is running in the park"
     metrics = calculate_metrics([caption], [caption])
-    assert metrics["BLEU-1"] == pytest.approx(1.0, abs=1e-3)
-    assert metrics["BERTScore-F1"] > 0.99
+    assert metrics["test_bleu1"] == pytest.approx(1.0, abs=1e-3)
+    assert metrics["test_bertscore_f1"] > 0.99

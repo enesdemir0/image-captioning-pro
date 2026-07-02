@@ -7,9 +7,8 @@ from bert_score import score as bert_score_fn
 
 def calculate_metrics(references, hypotheses):
     """
-    Identical lexical metrics to main branch (BLEU-1 through BLEU-4, METEOR, ROUGE-L)
-    plus BERTScore F1 for semantic similarity — making results directly comparable
-    to both the main branch experiments and the paper (IDAP 2025).
+    Identical metric set to main branch plus BERTScore-F1.
+    Keys are prefixed with test_ to match MLflow convention.
     """
     smoother = SmoothingFunction().method1
     refs_tok = [[r.split()] for r in references]
@@ -27,14 +26,13 @@ def calculate_metrics(references, hypotheses):
         rouge_scores.append(scorer.score(r, h)['rougeL'].fmeasure)
 
     _, _, F1 = bert_score_fn(hypotheses, references, lang="en", verbose=False)
-    bertscore_f1 = float(F1.mean())
 
     return {
-        "BLEU-1":       float(b1),
-        "BLEU-2":       float(b2),
-        "BLEU-3":       float(b3),
-        "BLEU-4":       float(b4),
-        "METEOR":       float(np.mean(meteor_scores)),
-        "ROUGE-L":      float(np.mean(rouge_scores)),
-        "BERTScore-F1": bertscore_f1,
+        "test_bleu1":        float(b1),
+        "test_bleu2":        float(b2),
+        "test_bleu3":        float(b3),
+        "test_bleu4":        float(b4),
+        "test_meteor":       float(np.mean(meteor_scores)),
+        "test_rougeL":       float(np.mean(rouge_scores)),
+        "test_bertscore_f1": float(F1.mean()),
     }

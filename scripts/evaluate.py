@@ -6,6 +6,9 @@ import json
 import mlflow
 import dagshub
 import nltk
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from src.utils.config_loader import load_config
@@ -21,6 +24,20 @@ except LookupError:
     nltk.download('punkt', quiet=True)
     nltk.download('wordnet', quiet=True)
     nltk.download('omw-1.4', quiet=True)
+
+
+def save_sample_image(image_path, real_caption, pred_caption, output_path):
+    img = plt.imread(image_path)
+    fig, ax = plt.subplots(figsize=(10, 8))
+    ax.imshow(img)
+    ax.axis('off')
+    ax.set_title(
+        f"REAL:  {real_caption}\n\nPRED:  {pred_caption}",
+        fontsize=10, pad=15, loc='left', wrap=True
+    )
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
 
 
 def main():
@@ -45,7 +62,8 @@ def main():
     vlm.load()
 
     references, hypotheses = [], []
-    os.makedirs("results", exist_ok=True)
+    os.makedirs("results/samples", exist_ok=True)
+    num_saved = 0
 
     with mlflow.start_run(run_name="VLM_Evaluation"):
         mlflow.log_params(config['model'])
@@ -55,6 +73,12 @@ def main():
             caption = vlm.generate_caption(sample['image_path'])
             references.append(sample['caption'])
             hypotheses.append(caption)
+
+            if num_saved < 5:
+                out_path = f"results/samples/sample_{i}.png"
+                save_sample_image(sample['image_path'], sample['caption'], caption, out_path)
+                mlflow.log_artifact(out_path, artifact_path="samples")
+                num_saved += 1
 
             if i % 50 == 0:
                 print(f"  [{i}/{len(samples)}] PRED: {caption}")
