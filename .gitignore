@@ -7,7 +7,6 @@ venv/
 
 # Data and Models (Do NOT push these)
 image_captioning_pro.egg-info
-data
 *.npy
 *.h5
 *.pth
