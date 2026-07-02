@@ -17,7 +17,7 @@ model:
   load_in_8bit: true
 
 evaluation:
-  num_samples: 10                        # change to e.g. 100 to run faster — always same first-N images
+  num_samples: 300                        # change to e.g. 100 to run faster — always same first-N images
   random_seed: 42                         # must match main branch
 
 mlflow:
