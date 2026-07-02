@@ -1,0 +1,26 @@
+dataset:
+  name: "MS-COCO-2014"
+  url_annotations: "http://images.cocodataset.org/annotations/annotations_trainval2014.zip"
+  image_dir: "data/train2014"
+  caption_file: "data/annotations/captions_train2014.json"
+  image_prefix: "COCO_train2014_"
+  subset_size: 0                          # must match main branch (0 = full dataset)
+  test_split_path: "configs/test_split.json"
+
+model:
+  name: "qwen2_5_vl"                     # llava | minicpm | qwen2_5_vl
+  hf_model_id: "Qwen/Qwen2.5-VL-7B-Instruct"
+  strategy: "zero_shot"                   # zero_shot | few_shot  ← appears in MLflow experiment name
+  prompt: "Describe this image in one sentence."
+  device: "cuda"
+  max_new_tokens: 50
+  load_in_8bit: true
+
+evaluation:
+  num_samples: 10                        # change to e.g. 100 to run faster — always same first-N images
+  random_seed: 42                         # must match main branch
+
+mlflow:
+  tracking_uri: "https://dagshub.com/enesdemir0/image-captioning-pro.mlflow"
+  repo_owner: "enesdemir0"
+  repo_name: "image-captioning-pro"

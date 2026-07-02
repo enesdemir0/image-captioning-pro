@@ -1,0 +1,14 @@
+transformers>=4.36.0
+torch>=2.0.0
+Pillow>=9.0.0
+accelerate>=0.24.0
+bitsandbytes>=0.41.0
+sentencepiece
+scikit-learn
+bert-score
+dagshub
+mlflow
+nltk
+rouge-score
+tqdm
+pyyaml
