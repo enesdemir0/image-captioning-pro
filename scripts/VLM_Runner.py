@@ -22,7 +22,8 @@ def run(cmd):
 def main():
     # 1. Dependencies
     run("pip install -e . -q")
-    run("pip install transformers accelerate bitsandbytes sentencepiece "
+    run("pip install transformers --upgrade -q")
+    run("pip install accelerate bitsandbytes sentencepiece "
         "bert-score dagshub mlflow nltk rouge-score scikit-learn tqdm pillow pyyaml -q")
 
     # 2. DagsHub auth
