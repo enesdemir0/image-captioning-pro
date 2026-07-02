@@ -29,6 +29,16 @@ class MiniCPMModel(BaseVLM):
                 del sys.modules[mod_name]
 
         from transformers import AutoModel, AutoTokenizer
+        import transformers.dynamic_module_utils as dynamic_module_utils
+
+        # modeling_navit_siglip.py (part of MiniCPM-V-2_6's remote code)
+        # has a module-level `import flash_attn`, used only if available
+        # at runtime — but transformers' trust_remote_code loader does a
+        # naive text scan for import statements and hard-fails if the
+        # package isn't installed, regardless of whether it's actually
+        # required. flash-attn is slow/fragile to build on Colab and isn't
+        # needed to run this model, so skip that overly strict check.
+        dynamic_module_utils.check_imports = lambda filename: []
 
         hf_id = self.config['model']['hf_model_id']
         self.tokenizer = AutoTokenizer.from_pretrained(hf_id, trust_remote_code=True)
