@@ -4,14 +4,25 @@ It reproduces the exact same split logic as the main branch (random_state=42,
 test_size=0.15) and picks the same 300 samples (seed=42), then saves them to
 configs/test_split.json.
 
+Captions are cleaned with the same logic as main branch text_processor.clean_caption()
+so reference text used for BLEU/METEOR/ROUGE-L/BERTScore is identical to main branch.
+
 Commit that file to git so every VLM experiment evaluates on the same images.
 """
 import json
 import os
+import re
 import numpy as np
 from sklearn.model_selection import train_test_split
 
 from src.utils.config_loader import load_config
+
+
+def clean_caption(caption):
+    """Mirrors main branch src/data/text_processor.py clean_caption() exactly."""
+    caption = str(caption).lower()
+    caption = re.sub(r'[^\w\s]', '', caption)
+    return re.sub(r'\s+', ' ', caption).strip()
 
 
 def main():
@@ -33,7 +44,7 @@ def main():
         full_path = os.path.join(image_dir, img_name)
         if os.path.exists(full_path):
             img_paths.append(full_path)
-            captions.append(ann['caption'])
+            captions.append(clean_caption(ann['caption']))
 
     print(f"Found {len(img_paths)} image-caption pairs.")
 

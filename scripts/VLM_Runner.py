@@ -7,8 +7,11 @@ LOCAL_ZIP    = "/content/coco_train2014.zip"
 
 
 def run(cmd):
+    """Run a shell command with PYTHONPATH always pointing to the project root."""
     print(f"\nExecuting: {cmd}")
-    subprocess.run(cmd, shell=True, check=True)
+    env = os.environ.copy()
+    env['PYTHONPATH'] = os.getcwd()
+    subprocess.run(cmd, shell=True, check=True, env=env)
 
 
 def main():
@@ -35,10 +38,10 @@ def main():
         print("Extracting...")
         run(f"unzip -q {LOCAL_ZIP} -d data/")
         os.remove(LOCAL_ZIP)
-        print("Tip: next time save data/train2014 as a zip to your Drive to skip this step.")
+        print("\nTip: save to Drive so you never download again:")
+        print("  !cd data && zip -r /content/drive/MyDrive/coco_train2014.zip train2014")
 
     # 4. Annotations (fast, ~250 MB)
-    os.environ['PYTHONPATH'] = os.getcwd()
     run("python scripts/download_data.py")
 
     # 5. Fixed test split — generate once, then committed to git
