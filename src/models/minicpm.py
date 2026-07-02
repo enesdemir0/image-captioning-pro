@@ -30,24 +30,42 @@ class MiniCPMModel(BaseVLM):
 
         import types
 
+        import transformers.dynamic_module_utils as dynamic_module_utils
         from transformers import AutoModel, AutoTokenizer
 
-        # modeling_navit_siglip.py (part of MiniCPM-V-2_6's remote code) has
-        # a module-level `import flash_attn`, used only if flash-attn is
-        # actually available at runtime (checked separately, via installed
-        # packages, not sys.modules). transformers' trust_remote_code loader
-        # does its own naive text scan for import statements and hard-fails
-        # if the package can't be imported, even though it's optional here.
-        # An earlier fix silenced this by stubbing out check_imports()
-        # entirely, but that function also returns the relative imports
-        # (e.g. modeling_navit_siglip.py itself) that the loader needs to
-        # recursively download — stubbing it broke that download instead.
-        # Registering a harmless fake flash_attn module satisfies the
-        # import-scan without touching check_imports' relative-import
-        # resolution. flash-attn is slow/fragile to build on Colab and
-        # isn't needed to run this model.
-        if "flash_attn" not in sys.modules:
-            sys.modules["flash_attn"] = types.ModuleType("flash_attn")
+        # modeling_navit_siglip.py (part of MiniCPM-V-2_6's remote code)
+        # calls is_flash_attn_2_available() at import time to decide
+        # whether to use flash attention — harmless and correctly skipped
+        # if the package is missing. But transformers' trust_remote_code
+        # loader first runs its own naive text scan (check_imports) that
+        # treats any package name mentioned anywhere in the file as a hard
+        # requirement, and refuses to even download the file if it's
+        # missing. flash-attn is slow/fragile to build on Colab and isn't
+        # needed to run this model.
+        #
+        # Fix that *only* for the duration of check_imports' scan: make it
+        # think flash_attn is importable just long enough to pass, then
+        # remove the stub immediately. It must not still be in sys.modules
+        # once the model's own code actually runs is_flash_attn_2_available()
+        # — that function uses importlib.util.find_spec, which raises
+        # `flash_attn.__spec__ is None` on a bare stub module instead of
+        # cleanly returning "not installed" (this broke an earlier version
+        # of this fix that left the stub in place permanently).
+        _original_check_imports = dynamic_module_utils.check_imports
+
+        def _check_imports_allow_missing_flash_attn(filename):
+            try:
+                return _original_check_imports(filename)
+            except ImportError as e:
+                if "flash_attn" not in str(e):
+                    raise
+                sys.modules["flash_attn"] = types.ModuleType("flash_attn")
+                try:
+                    return _original_check_imports(filename)
+                finally:
+                    del sys.modules["flash_attn"]
+
+        dynamic_module_utils.check_imports = _check_imports_allow_missing_flash_attn
 
         hf_id = self.config['model']['hf_model_id']
         self.tokenizer = AutoTokenizer.from_pretrained(hf_id, trust_remote_code=True)
