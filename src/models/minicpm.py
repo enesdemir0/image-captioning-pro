@@ -28,17 +28,26 @@ class MiniCPMModel(BaseVLM):
             if mod_name.split(".")[0] in ("transformers", "tokenizers", "huggingface_hub"):
                 del sys.modules[mod_name]
 
-        from transformers import AutoModel, AutoTokenizer
-        import transformers.dynamic_module_utils as dynamic_module_utils
+        import types
 
-        # modeling_navit_siglip.py (part of MiniCPM-V-2_6's remote code)
-        # has a module-level `import flash_attn`, used only if available
-        # at runtime — but transformers' trust_remote_code loader does a
-        # naive text scan for import statements and hard-fails if the
-        # package isn't installed, regardless of whether it's actually
-        # required. flash-attn is slow/fragile to build on Colab and isn't
-        # needed to run this model, so skip that overly strict check.
-        dynamic_module_utils.check_imports = lambda filename: []
+        from transformers import AutoModel, AutoTokenizer
+
+        # modeling_navit_siglip.py (part of MiniCPM-V-2_6's remote code) has
+        # a module-level `import flash_attn`, used only if flash-attn is
+        # actually available at runtime (checked separately, via installed
+        # packages, not sys.modules). transformers' trust_remote_code loader
+        # does its own naive text scan for import statements and hard-fails
+        # if the package can't be imported, even though it's optional here.
+        # An earlier fix silenced this by stubbing out check_imports()
+        # entirely, but that function also returns the relative imports
+        # (e.g. modeling_navit_siglip.py itself) that the loader needs to
+        # recursively download — stubbing it broke that download instead.
+        # Registering a harmless fake flash_attn module satisfies the
+        # import-scan without touching check_imports' relative-import
+        # resolution. flash-attn is slow/fragile to build on Colab and
+        # isn't needed to run this model.
+        if "flash_attn" not in sys.modules:
+            sys.modules["flash_attn"] = types.ModuleType("flash_attn")
 
         hf_id = self.config['model']['hf_model_id']
         self.tokenizer = AutoTokenizer.from_pretrained(hf_id, trust_remote_code=True)
