@@ -9,8 +9,11 @@ so reference text used for BLEU/METEOR/ROUGE-L/BERTScore is identical to main br
 
 Commit that file to git so every VLM experiment evaluates on the same images.
 """
-import json
+import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import json
 import re
 import numpy as np
 from sklearn.model_selection import train_test_split
