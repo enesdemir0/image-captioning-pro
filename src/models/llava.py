@@ -15,6 +15,8 @@ class LLaVAModel(BaseVLM):
         load_kwargs = {"device_map": "auto"}
         if self.config['model'].get('load_in_8bit', True):
             load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+        else:
+            load_kwargs["torch_dtype"] = torch.float16
 
         self.model = LlavaForConditionalGeneration.from_pretrained(hf_id, **load_kwargs)
         print(f"LLaVA loaded: {hf_id}")
