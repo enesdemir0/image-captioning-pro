@@ -1,16 +1,21 @@
 import os
 import subprocess
 
+# Always resolve paths relative to the project root, not wherever Colab's CWD happens to be
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(PROJECT_ROOT)
+
 DRIVE_ZIP    = "/content/drive/MyDrive/coco_train2014.zip"
 COCO_IMG_URL = "http://images.cocodataset.org/zips/train2014.zip"
 LOCAL_ZIP    = "/content/coco_train2014.zip"
+DATA_DIR     = os.path.join(PROJECT_ROOT, "data", "train2014")
 
 
 def run(cmd):
     """Run a shell command with PYTHONPATH always pointing to the project root."""
     print(f"\nExecuting: {cmd}")
     env = os.environ.copy()
-    env['PYTHONPATH'] = os.getcwd()
+    env['PYTHONPATH'] = PROJECT_ROOT
     subprocess.run(cmd, shell=True, check=True, env=env)
 
 
@@ -25,8 +30,8 @@ def main():
     dagshub.init(repo_owner="enesdemir0", repo_name="image-captioning-pro", mlflow=True)
 
     # 3. Images — Drive zip → direct COCO download → already extracted
-    os.makedirs("data", exist_ok=True)
-    if os.path.exists("data/train2014"):
+    os.makedirs(os.path.join(PROJECT_ROOT, "data"), exist_ok=True)
+    if os.path.exists(DATA_DIR):
         print("Images already present on local disk. Skipping.")
     elif os.path.exists(DRIVE_ZIP):
         print("Extracting images from Google Drive zip...")
