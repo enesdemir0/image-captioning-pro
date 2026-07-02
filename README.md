@@ -23,9 +23,9 @@ This branch reproduces and extends the comparative evaluation methodology from:
 image-captioning-pro/
 ├── configs/
 │   ├── vlm_config.yaml          ← single file that controls everything
-│   └── test_split.json          ← fixed 300-sample test split (committed to git)
-│                                   generated once, never changes — guarantees
-│                                   identical evaluation data across all models
+│   └── test_split.json          ← 300-sample test split, regenerated each Colab
+│                                   session by generate_test_split.py (NOT yet
+│                                   committed to git — see note below)
 ├── src/
 │   ├── data/
 │   │   └── dataset_loader.py    ← loads fixed test split, slices to num_samples
@@ -221,8 +221,14 @@ Change `name` and `hf_model_id` in `vlm_config.yaml`, push, then run `!git pull`
 
 ## Fair Comparison — What Is and Isn't Guaranteed
 
-### Fair within this branch (guaranteed)
-`configs/test_split.json` is committed to git. Every VLM you evaluate — regardless of model, strategy, or num_samples setting — always draws from this same fixed file. Setting `num_samples: 10` always uses the **first 10** entries, never reshuffled. So all three models are evaluated on identical images with identical reference captions.
+### Fair within this branch (currently true in practice, not yet enforced by git)
+`configs/test_split.json` is **not committed to git yet** — `VLM_Runner.py` regenerates it fresh each Colab session via `scripts/generate_test_split.py` whenever the file isn't already present locally. That script is fully deterministic (`random_state=42` in `train_test_split`, `np.random.seed(42)` for sampling), so it reproduces the exact same 300 samples every time **as long as the same COCO image files are on disk at generation time**.
+
+In practice, all evaluations so far (LLaVA, Qwen2.5-VL, MiniCPM) sourced images from the same unchanging Google Drive zip, so regeneration has produced identical splits each session — all three models were evaluated on the same 300 images with the same reference captions. Setting `num_samples: 10` always uses the **first 10** entries of that split, never reshuffled, so this holds regardless of `num_samples`.
+
+This also means the sample images logged to MLflow under `samples/` (the first 5 `results/samples/sample_N.png` files, each showing REAL vs PRED caption) are the same 5 images across every model run — `evaluate.py` saves `sample_0.png` .. `sample_4.png` from `samples[0:5]`, and since every session regenerates the identical split, those indices always point at the same underlying images regardless of which model produced the prediction.
+
+> **To do:** this guarantee currently depends on always sourcing images from the same Drive zip — nothing in the code enforces it. Commit the generated `configs/test_split.json` to git (see `scripts/generate_test_split.py`'s own printed reminder) so the split is pinned by file content rather than by environment discipline.
 
 ### Fair against main branch (best-effort, not guaranteed)
 The main branch generates its test split dynamically at runtime from the full COCO annotation file. This branch tries to match it by reproducing the same split logic in `scripts/generate_test_split.py`:
