@@ -7,14 +7,16 @@ class Qwen25VLModel(BaseVLM):
     """Qwen2.5-VL-7B — Qwen/Qwen2.5-VL-7B-Instruct"""
 
     def load(self):
-        from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
+        from transformers import AutoModelForVision2Seq, AutoProcessor, BitsAndBytesConfig
+
         hf_id = self.config['model']['hf_model_id']
         self.processor = AutoProcessor.from_pretrained(hf_id)
-        self.model = Qwen2VLForConditionalGeneration.from_pretrained(
-            hf_id,
-            load_in_8bit=self.config['model'].get('load_in_8bit', True),
-            device_map="auto"
-        )
+
+        load_kwargs = {"device_map": "auto"}
+        if self.config['model'].get('load_in_8bit', True):
+            load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+
+        self.model = AutoModelForVision2Seq.from_pretrained(hf_id, **load_kwargs)
         print(f"Qwen2.5-VL loaded: {hf_id}")
 
     def _zero_shot(self, image_path: str) -> str:

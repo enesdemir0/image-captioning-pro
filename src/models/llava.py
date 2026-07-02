@@ -7,14 +7,16 @@ class LLaVAModel(BaseVLM):
     """LLaVA-7B — llava-hf/llava-1.5-7b-hf"""
 
     def load(self):
-        from transformers import LlavaForConditionalGeneration, AutoProcessor
+        from transformers import LlavaForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
+
         hf_id = self.config['model']['hf_model_id']
         self.processor = AutoProcessor.from_pretrained(hf_id)
-        self.model = LlavaForConditionalGeneration.from_pretrained(
-            hf_id,
-            load_in_8bit=self.config['model'].get('load_in_8bit', True),
-            device_map="auto"
-        )
+
+        load_kwargs = {"device_map": "auto"}
+        if self.config['model'].get('load_in_8bit', True):
+            load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+
+        self.model = LlavaForConditionalGeneration.from_pretrained(hf_id, **load_kwargs)
         print(f"LLaVA loaded: {hf_id}")
 
     def _zero_shot(self, image_path: str) -> str:
