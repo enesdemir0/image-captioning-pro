@@ -59,6 +59,10 @@ def main():
     samples = loader.load_test_split()
     print(f"Evaluating on {len(samples)} fixed test samples.")
 
+    if config['model'].get('strategy', 'zero_shot') == 'few_shot':
+        vlm.few_shot_examples = loader.load_few_shot_examples()
+        print(f"Using {len(vlm.few_shot_examples)} few-shot examples.")
+
     vlm.load()
 
     references, hypotheses = [], []

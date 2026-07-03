@@ -49,3 +49,37 @@ class Qwen25VLModel(BaseVLM):
             )
         generated = output[0][inputs.input_ids.shape[1]:]
         return self.processor.decode(generated, skip_special_tokens=True).strip()
+
+    def _few_shot(self, image_path: str) -> str:
+        prompt_text = self.config['model'].get('prompt', 'Describe this image in one sentence.')
+
+        images, messages = [], []
+        for ex in self.few_shot_examples:
+            images.append(Image.open(ex['image_path']).convert("RGB"))
+            messages.append({
+                "role": "user",
+                "content": [{"type": "image"}, {"type": "text", "text": prompt_text}]
+            })
+            messages.append({
+                "role": "assistant",
+                "content": [{"type": "text", "text": ex['caption']}]
+            })
+        images.append(Image.open(image_path).convert("RGB"))
+        messages.append({
+            "role": "user",
+            "content": [{"type": "image"}, {"type": "text", "text": prompt_text}]
+        })
+
+        text = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs = self.processor(
+            text=[text], images=images, return_tensors="pt"
+        ).to(self.model.device)
+        with torch.no_grad():
+            output = self.model.generate(
+                **inputs,
+                max_new_tokens=self.config['model'].get('max_new_tokens', 50)
+            )
+        generated = output[0][inputs.input_ids.shape[1]:]
+        return self.processor.decode(generated, skip_special_tokens=True).strip()

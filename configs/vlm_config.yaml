@@ -10,11 +10,13 @@ dataset:
 model:
   name: "llava"                     # llava | minicpm | qwen2_5_vl
   hf_model_id: "llava-hf/llava-1.5-7b-hf"
-  strategy: "zero_shot"                   # zero_shot | few_shot  ← appears in MLflow experiment name
+  strategy: "few_shot"                   # zero_shot | few_shot  ← appears in MLflow experiment name
   prompt: "Describe this image in one sentence."
   device: "cuda"
   max_new_tokens: 50
   load_in_8bit: false                     # ignored for minicpm — see src/models/minicpm.py
+  few_shot_k: 2                           # only used when strategy is few_shot — number of
+                                           # in-context (image, caption) examples to prepend
 
 evaluation:
   num_samples: 300                        # change to e.g. 100 to run faster — always same first-N images

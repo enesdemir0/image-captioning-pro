@@ -17,6 +17,9 @@ class BaseVLM(ABC):
         self.config = config
         self.model = None
         self.processor = None
+        # Populated by evaluate.py before the eval loop, only when
+        # strategy == 'few_shot'. List of {"image_path": ..., "caption": ...}.
+        self.few_shot_examples = []
 
     @abstractmethod
     def load(self):

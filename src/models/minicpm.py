@@ -124,3 +124,17 @@ class MiniCPMModel(BaseVLM):
         msgs = [{'role': 'user', 'content': [image, prompt_text]}]
         result = self.model.chat(image=None, msgs=msgs, tokenizer=self.tokenizer)
         return result.strip()
+
+    def _few_shot(self, image_path: str) -> str:
+        prompt_text = self.config['model'].get('prompt', 'Describe this image in one sentence.')
+
+        msgs = []
+        for ex in self.few_shot_examples:
+            ex_image = Image.open(ex['image_path']).convert("RGB")
+            msgs.append({'role': 'user', 'content': [ex_image, prompt_text]})
+            msgs.append({'role': 'assistant', 'content': [ex['caption']]})
+        image = Image.open(image_path).convert("RGB")
+        msgs.append({'role': 'user', 'content': [image, prompt_text]})
+
+        result = self.model.chat(image=None, msgs=msgs, tokenizer=self.tokenizer)
+        return result.strip()

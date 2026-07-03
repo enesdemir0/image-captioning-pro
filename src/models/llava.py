@@ -33,3 +33,23 @@ class LLaVAModel(BaseVLM):
             )
         full = self.processor.decode(output[0], skip_special_tokens=True)
         return full.split("ASSISTANT:")[-1].strip()
+
+    def _few_shot(self, image_path: str) -> str:
+        prompt_text = self.config['model'].get('prompt', 'Describe this image in one sentence.')
+
+        images, turns = [], []
+        for ex in self.few_shot_examples:
+            images.append(Image.open(ex['image_path']).convert("RGB"))
+            turns.append(f"USER: <image>\n{prompt_text}\nASSISTANT: {ex['caption']}")
+        images.append(Image.open(image_path).convert("RGB"))
+        turns.append(f"USER: <image>\n{prompt_text}\nASSISTANT:")
+        prompt = "\n".join(turns)
+
+        inputs = self.processor(text=prompt, images=images, return_tensors="pt").to(self.model.device)
+        with torch.no_grad():
+            output = self.model.generate(
+                **inputs,
+                max_new_tokens=self.config['model'].get('max_new_tokens', 50)
+            )
+        full = self.processor.decode(output[0], skip_special_tokens=True)
+        return full.split("ASSISTANT:")[-1].strip()

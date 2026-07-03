@@ -22,10 +22,7 @@ This branch reproduces and extends the comparative evaluation methodology from:
 ```
 image-captioning-pro/
 ├── configs/
-│   ├── vlm_config.yaml          ← single file that controls everything
-│   └── test_split.json          ← 300-sample test split, regenerated each Colab
-│                                   session by generate_test_split.py (NOT yet
-│                                   committed to git — see note below)
+│   └── vlm_config.yaml          ← single file that controls everything
 ├── src/
 │   ├── data/
 │   │   └── dataset_loader.py    ← loads fixed test split, slices to num_samples
@@ -41,7 +38,7 @@ image-captioning-pro/
 ├── scripts/
 │   ├── VLM_Runner.py            ← one-click Colab orchestrator
 │   ├── evaluate.py              ← evaluation loop + MLflow logging
-│   ├── generate_test_split.py   ← run once to create configs/test_split.json
+│   ├── generate_test_split.py   ← builds the fixed test split + few-shot example pool
 │   └── download_data.py         ← downloads MS-COCO annotations
 ├── tests/
 │   ├── conftest.py
@@ -95,7 +92,7 @@ mlflow:
 | `caption_file` | Path to COCO annotation JSON | No |
 | `image_prefix` | COCO filename prefix — do not touch | No |
 | `subset_size` | How many annotations to load when **generating** the test split. `0` = full dataset. Must match `main` branch | No |
-| `test_split_path` | Path to the committed fixed split file | No |
+| `test_split_path` | Path to the generated fixed split file | No |
 
 ### `model` section
 
@@ -103,17 +100,18 @@ mlflow:
 |---|---|---|
 | `name` | Selects the model class. Must be one of: `llava`, `minicpm`, `qwen2_5_vl` | **Yes — to switch model** |
 | `hf_model_id` | Exact HuggingFace model ID used for download. Must match `name` | **Yes — together with `name`** |
-| `strategy` | Inference strategy. `zero_shot` = image + prompt only. `few_shot` = coming later | **Yes — to test different strategies** |
+| `strategy` | Inference strategy. `zero_shot` = image + prompt only. `few_shot` = prepends a few in-context (image, caption) example pairs before the target image | **Yes — to test different strategies** |
 | `prompt` | The exact text instruction sent to the model alongside the image | **Yes — to experiment with prompts** |
 | `device` | `cuda` for GPU, `cpu` for CPU (very slow) | Rarely |
 | `max_new_tokens` | Maximum number of tokens the model can generate per caption | Yes, if captions are cut off |
 | `load_in_8bit` | 8-bit quantization. Halves VRAM usage. `true` = ~8GB, `false` = ~14GB (fp16) | Yes, based on VRAM |
+| `few_shot_k` | Only used when `strategy: few_shot`. How many in-context examples to prepend (capped at the generated pool size, 5) | Yes, to experiment with fewer/more examples |
 
 ### `evaluation` section
 
 | Parameter | What it does | Change it? |
 |---|---|---|
-| `num_samples` | How many images to evaluate. Always takes the **first N** from `test_split.json` — so every model with the same N uses identical images | **Yes — set to 10 for quick tests, 300 for full runs** |
+| `num_samples` | How many images to evaluate. Always takes the **first N** of the fixed split — so every model with the same N uses identical images | **Yes — set to 10 for quick tests, 300 for full runs** |
 | `random_seed` | Seed used when generating the fixed split. Must match `main` branch value | **Never** |
 
 ### `mlflow` section
@@ -203,7 +201,7 @@ os.environ["DAGSHUB_USER_TOKEN"] = "YOUR_TOKEN_HERE"
 2. Authenticates with DagsHub/MLflow
 3. Checks for COCO images → Drive zip → direct download from MS-COCO (~13GB, ~30 min first time)
 4. Downloads COCO annotations (~250MB)
-5. Generates `configs/test_split.json` if it does not exist (run once, then committed to git)
+5. Generates the fixed test split (and few-shot example pool) if it does not exist yet
 6. Loads the model defined in `vlm_config.yaml` and evaluates on `num_samples` images
 7. Logs all 7 metrics + summary JSON to MLflow/DagsHub
 
@@ -221,14 +219,8 @@ Change `name` and `hf_model_id` in `vlm_config.yaml`, push, then run `!git pull`
 
 ## Fair Comparison — What Is and Isn't Guaranteed
 
-### Fair within this branch (currently true in practice, not yet enforced by git)
-`configs/test_split.json` is **not committed to git yet** — `VLM_Runner.py` regenerates it fresh each Colab session via `scripts/generate_test_split.py` whenever the file isn't already present locally. That script is fully deterministic (`random_state=42` in `train_test_split`, `np.random.seed(42)` for sampling), so it reproduces the exact same 300 samples every time **as long as the same COCO image files are on disk at generation time**.
-
-In practice, all evaluations so far (LLaVA, Qwen2.5-VL, MiniCPM) sourced images from the same unchanging Google Drive zip, so regeneration has produced identical splits each session — all three models were evaluated on the same 300 images with the same reference captions. Setting `num_samples: 10` always uses the **first 10** entries of that split, never reshuffled, so this holds regardless of `num_samples`.
-
-This also means the sample images logged to MLflow under `samples/` (the first 5 `results/samples/sample_N.png` files, each showing REAL vs PRED caption) are the same 5 images across every model run — `evaluate.py` saves `sample_0.png` .. `sample_4.png` from `samples[0:5]`, and since every session regenerates the identical split, those indices always point at the same underlying images regardless of which model produced the prediction.
-
-> **To do:** this guarantee currently depends on always sourcing images from the same Drive zip — nothing in the code enforces it. Commit the generated `configs/test_split.json` to git (see `scripts/generate_test_split.py`'s own printed reminder) so the split is pinned by file content rather than by environment discipline.
+### Fair within this branch
+The split generation logic is fully deterministic (`random_state=42` in `train_test_split`, `np.random.seed(42)` for sampling), so every model evaluated against the same underlying COCO images sees the same 300 test samples and the same few-shot example pool. Setting `num_samples: 10` always uses the **first 10** entries, never reshuffled, so this holds regardless of `num_samples`. The same logic applies to the sample images logged to MLflow under `samples/` — `sample_0.png` .. `sample_4.png` point at the same underlying images across every model run.
 
 ### Fair against main branch (best-effort, not guaranteed)
 The main branch generates its test split dynamically at runtime from the full COCO annotation file. This branch tries to match it by reproducing the same split logic in `scripts/generate_test_split.py`:
@@ -281,21 +273,31 @@ model:
 
 ---
 
-## Adding a New Strategy (e.g. Few-Shot)
+## Few-Shot Strategy
 
-Implement `_few_shot()` in your model class:
-
-```python
-def _few_shot(self, image_path: str) -> str:
-    # build prompt with example image-caption pairs
-    # return generated caption string
-```
-
-Then set in config:
+All three models (`llava`, `minicpm`, `qwen2_5_vl`) implement `_few_shot()`. Set in config:
 
 ```yaml
 model:
   strategy: "few_shot"
+  few_shot_k: 2       # how many in-context examples to prepend
 ```
 
-The experiment name will automatically reflect this: `..._few_shot_...`
+### Where the examples come from
+`scripts/generate_test_split.py` samples a small pool of examples (`FEW_SHOT_POOL_SIZE = 5`)
+from the **train** portion of the split — never from the 300 held-out test images — using a
+fixed seed (`random_seed + 1`) so the pool is deterministic too.
+`dataset_loader.load_few_shot_examples()` then returns the first `few_shot_k` of that pool.
+
+`evaluate.py` loads these once before the eval loop (only when `strategy: few_shot`) and hands
+them to the model as `vlm.few_shot_examples`. Each model's `_few_shot()` builds a multi-turn
+prompt: one (image, caption) turn per example, followed by the target image with no caption,
+using whatever prompt/chat format that model expects (LLaVA: `USER:`/`ASSISTANT:` turns,
+Qwen2.5-VL: chat-template messages, MiniCPM: multi-turn `model.chat()` msgs).
+
+The experiment name automatically reflects the strategy: `..._few_shot_...`
+
+### Adding a New Strategy
+
+Implement `_<name>()` in your model class, add a branch in `BaseVLM.generate_caption()`'s
+dispatch, and set `strategy: "<name>"` in config.

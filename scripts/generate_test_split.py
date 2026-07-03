@@ -28,6 +28,11 @@ def clean_caption(caption):
     return re.sub(r'\s+', ' ', caption).strip()
 
 
+# Pool of in-context examples for the few_shot strategy, drawn from the train
+# portion of the split (never overlaps with the held-out test samples above).
+FEW_SHOT_POOL_SIZE = 5
+
+
 def main():
     config = load_config()
     caption_file = config['dataset']['caption_file']
@@ -52,7 +57,7 @@ def main():
     print(f"Found {len(img_paths)} image-caption pairs.")
 
     # Mirrors main branch split_data() exactly
-    _, test_imgs, _, test_caps = train_test_split(
+    train_imgs, test_imgs, train_caps, test_caps = train_test_split(
         img_paths, captions, test_size=0.15, random_state=42
     )
 
@@ -67,16 +72,31 @@ def main():
         for i in selected
     ]
 
+    # Few-shot in-context examples — sampled from the train portion (not the
+    # test portion above), so a few_shot prompt never gets shown a test
+    # image's own reference caption as an "example".
+    fs_indices = np.arange(len(train_imgs))
+    np.random.seed(random_seed + 1)
+    np.random.shuffle(fs_indices)
+    fs_selected = fs_indices[:FEW_SHOT_POOL_SIZE]
+
+    few_shot_examples = [
+        {"image_path": train_imgs[i], "caption": train_caps[i]}
+        for i in fs_selected
+    ]
+
     with open(output_path, 'w') as f:
         json.dump({
             "num_samples": num_samples,
             "random_seed": random_seed,
             "split_random_state": 42,
             "test_size": 0.15,
-            "samples": samples
+            "samples": samples,
+            "few_shot_examples": few_shot_examples
         }, f, indent=2)
 
-    print(f"Saved {num_samples} test samples → {output_path}")
+    print(f"Saved {num_samples} test samples and {len(few_shot_examples)} "
+          f"few-shot examples → {output_path}")
     print("Commit configs/test_split.json to git before running any VLM evaluation.")
 
 

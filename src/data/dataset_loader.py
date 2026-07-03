@@ -30,6 +30,31 @@ class COCODataLoader:
         num_samples = self.config['evaluation'].get('num_samples', len(samples))
         return samples[:num_samples]
 
+    def load_few_shot_examples(self):
+        """
+        Load the pool of in-context (image, caption) examples used by the
+        few_shot strategy. Drawn from the train portion of the split by
+        generate_test_split.py, so they never overlap the held-out test set.
+        """
+        if not os.path.exists(self.test_split_path):
+            raise FileNotFoundError(
+                f"Test split not found at '{self.test_split_path}'. "
+                "Run scripts/generate_test_split.py first, then commit the file."
+            )
+        with open(self.test_split_path, 'r') as f:
+            data = json.load(f)
+
+        examples = data.get('few_shot_examples')
+        if not examples:
+            raise ValueError(
+                f"'{self.test_split_path}' has no 'few_shot_examples' — it was likely "
+                "generated before few_shot support was added. Delete it and rerun "
+                "scripts/generate_test_split.py to regenerate it with examples included."
+            )
+
+        k = self.config['model'].get('few_shot_k', len(examples))
+        return examples[:k]
+
     def load_all_annotations(self):
         """Load raw COCO annotations — used only by generate_test_split.py."""
         with open(self.caption_file, 'r') as f:
